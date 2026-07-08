@@ -1,0 +1,15 @@
+# ~/.config/systemd/user/jackpot-predictor.timer
+#
+# Fires every evening at 20:00 EAT. main.py itself decides whether today is
+# "2 days before the jackpot's first kickoff" (config schedule.days_before)
+# and exits quietly otherwise, so one daily timer covers Supa + Midweek and
+# any schedule changes SportPesa makes.
+[Unit]
+Description=Jackpot Predictor — daily 20:00 EAT gate
+
+[Timer]
+OnCalendar=*-*-* 20:00:00 Africa/Nairobi
+Persistent=true
+
+[Install]
+WantedBy=timers.target

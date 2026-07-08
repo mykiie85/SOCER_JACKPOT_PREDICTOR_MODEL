@@ -1,0 +1,43 @@
+# SportPesa Jackpot Predictor configuration
+
+# Confidence tier thresholds (probability of the top pick + margin over 2nd)
+confidence:
+  high:
+    min_primary_prob: 0.55
+    min_margin: 0.15
+  medium:
+    min_primary_prob: 0.45
+    min_margin: 0.08
+  uncertain_margin: 0.08   # margin below this => UNCERTAIN
+
+# Scraping
+scraper:
+  user_agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36"
+  timeout: 30
+  retries: 3
+  cache_ttl_hours: 6
+
+# Prediction sources
+predictor:
+  # Minimum rapidfuzz token_sort_ratio for a fuzzy team-name match
+  fuzzy_threshold: 85
+  # When a fixture's league/teams are outside EdgeBot coverage, fall back to
+  # de-vigged SportPesa odds (the jackpot API publishes 1X2 prices per match).
+  odds_fallback: true
+  # Blend for covered fixtures: p = w*model + (1-w)*odds_implied. 1.0 = model only.
+  model_weight: 1.0
+
+# Scheduling: send predictions N days before the earliest kickoff, at HH:MM EAT
+schedule:
+  days_before: 2
+  send_hour_eat: 20
+  timezone: "Africa/Nairobi"
+
+# Delivery
+delivery:
+  telegram:
+    enabled: true
+  email:
+    enabled: true
+    smtp_host: "smtp.gmail.com"
+    smtp_port: 465

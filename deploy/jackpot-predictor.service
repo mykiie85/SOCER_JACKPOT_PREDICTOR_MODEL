@@ -1,0 +1,16 @@
+# ~/.config/systemd/user/jackpot-predictor.service
+[Unit]
+Description=SportPesa Jackpot Predictor
+After=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/jackpot_predictor
+EnvironmentFile=%h/jackpot_predictor/.env
+# Reuse EdgeBot's virtualenv — it already has pandas/catboost/lightgbm.
+ExecStart=%h/edgebot/edgebot_env/bin/python main.py
+StandardOutput=append:%h/jackpot_predictor/data/logs/run.log
+StandardError=append:%h/jackpot_predictor/data/logs/error.log
+
+[Install]
+WantedBy=default.target

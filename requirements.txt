@@ -1,0 +1,9 @@
+# Jackpot predictor's own dependencies. EdgeBot's stack (pandas, catboost,
+# lightgbm, pyarrow, ...) must also be importable — simplest is to run this
+# bot inside EdgeBot's virtualenv, which already satisfies everything below.
+requests>=2.31
+pandas>=2.0
+pyyaml>=6.0
+rapidfuzz>=3.0
+python-dotenv>=1.0
+tzdata>=2024.1; sys_platform == "win32"
