@@ -27,6 +27,20 @@ predictor:
   # Blend for covered fixtures: p = w*model + (1-w)*odds_implied. 1.0 = model only.
   model_weight: 1.0
 
+# External insight sources (best-effort — failures never block a run)
+insights:
+  forebet:
+    enabled: true
+    # Require BOTH team names to clear this fuzzy score within the fixture's
+    # country before trusting a Forebet record.
+    min_match_score: 70
+    # Blend Forebet's probabilities into ours: p = (1-w)*base + w*forebet.
+    # 0 = display-only. Applied to model and odds-fallback fixtures alike.
+    blend_weight: 0.25
+  sofascore:
+    enabled: true
+    min_match_score: 65
+
 # Scheduling: send predictions N days before the earliest kickoff, at HH:MM EAT
 schedule:
   days_before: 2

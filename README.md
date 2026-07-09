@@ -32,10 +32,19 @@ scraper  ──►  resolver  ──►  predictor  ──►  formatter  ──
    coverage — common in the European off-season when jackpots use Belarus /
    Uruguay / Brazil Serie C fixtures — fall back to **de-vigged SportPesa
    odds**, clearly labelled `market odds` in the output.
-4. **Confidence tiers** — HIGH / MEDIUM / LOW / UNCERTAIN from top-pick
+4. **Insights** — two best-effort second opinions enrich every fixture:
+   - **Forebet** (`scripts/getrs.php` JSON): their 1X2 percentages + predicted
+     score, matched country-scoped with both team names above a fuzzy
+     threshold. Configurable `blend_weight` (default 0.25) folds Forebet's
+     probabilities into ours — agreement sharpens a pick, disagreement pushes
+     it toward UNCERTAIN. Consensus is called out per match.
+   - **SofaScore** (via EdgeBot's `SofaScoreClient`): last-5 form, standings
+     position, fan-vote split and head-to-head, shown per match and in the CSV.
+   Both sources degrade gracefully — a block or mismatch never stops a run.
+5. **Confidence tiers** — HIGH / MEDIUM / LOW / UNCERTAIN from top-pick
    probability + margin over the second pick. Model predictions EdgeBot flags
    as `low_confidence` (thin team history) are capped at LOW.
-5. **Delivery** — Telegram message (auto-chunked) + CSV document, HTML email
+6. **Delivery** — Telegram message (auto-chunked) + CSV document, HTML email
    with CSV attachment. Every run archives `.txt/.html/.csv/.json` under
    `data/jackpots/`.
 

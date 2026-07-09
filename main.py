@@ -84,7 +84,8 @@ def main(dry_run: bool = False, force: bool = False,
 
     # 4. Predict (EdgeBot model where covered, market-odds fallback elsewhere).
     from jackpot_predictor.predictor.engine import predict_jackpot
-    predictions = predict_jackpot(resolved, bridge)
+    predictions = predict_jackpot(resolved, bridge,
+                                  jackpot_id=jackpot["jackpot_id"])
 
     # 5. Format + archive.
     from jackpot_predictor.predictor.formatter import save_outputs

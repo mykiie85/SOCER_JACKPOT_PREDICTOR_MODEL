@@ -31,12 +31,48 @@ def _blend(model_p: dict, odds_p: dict | None, w: float) -> tuple[dict, str]:
     return {k: v / s for k, v in mixed.items()}, "blend"
 
 
+def _collect_insights(fixtures: list[dict], jackpot_id: str) -> tuple[dict, dict]:
+    """(forebet, sofascore) insight maps keyed by fixture event_id.
+
+    Both sources are best-effort second opinions; any failure returns an empty
+    map and the prediction run continues on model/odds alone.
+    """
+    forebet_map: dict = {}
+    sofa_map: dict = {}
+    try:
+        from jackpot_predictor.insights import forebet
+        forebet_map = forebet.insights_for(fixtures)
+    except Exception as e:  # noqa: BLE001
+        log.warning("Forebet insights skipped: %s", e)
+    try:
+        from jackpot_predictor.insights import sofascore
+        sofa_map = sofascore.insights_for(fixtures, jackpot_id)
+    except Exception as e:  # noqa: BLE001
+        log.warning("SofaScore insights skipped: %s", e)
+    return forebet_map, sofa_map
+
+
+def _consensus(row_pick: str | None, forebet: dict | None) -> str | None:
+    """Human-readable agreement note between our pick and Forebet's."""
+    if not row_pick or not forebet or not forebet.get("pick"):
+        return None
+    if forebet["pick"] == row_pick:
+        return "Forebet agrees"
+    from jackpot_predictor.predictor.confidence_tier import PICK_DISPLAY
+    return f"Forebet says {PICK_DISPLAY[forebet['pick']]}"
+
+
 def predict_jackpot(resolved_fixtures: list[dict],
-                    bridge: EdgeBotBridge | None = None) -> list[dict]:
+                    bridge: EdgeBotBridge | None = None,
+                    jackpot_id: str = "") -> list[dict]:
     """Return one prediction dict per fixture (same order as input)."""
     pcfg = jackpot_config()["predictor"]
     model_weight = float(pcfg.get("model_weight", 1.0))
     odds_fallback_on = bool(pcfg.get("odds_fallback", True))
+    icfg = jackpot_config().get("insights", {}).get("forebet", {})
+    forebet_w = float(icfg.get("blend_weight", 0.0)) if icfg.get(
+        "enabled", True) else 0.0
+    forebet_map, sofa_map = _collect_insights(resolved_fixtures, jackpot_id)
 
     modelable = [f for f in resolved_fixtures if f.get("resolved")]
     model_results: dict[int, dict | None] = {}
@@ -65,7 +101,23 @@ def predict_jackpot(resolved_fixtures: list[dict],
             probs = {k: odds_p[k] for k in ("home", "draw", "away")}
             source = "odds"
 
-        row = {**fx, "source": source}
+        forebet_ins = forebet_map.get(fx["event_id"])
+        sofa_ins = sofa_map.get(fx["event_id"])
+
+        # Second-opinion blend: fold Forebet's probabilities into the base
+        # estimate. Applied before tiering so agreement sharpens confidence
+        # and disagreement widens the margin toward UNCERTAIN — exactly the
+        # behaviour a consensus should have.
+        if probs is not None and forebet_ins and forebet_w > 0:
+            fp = forebet_ins["probs"]
+            probs = {k: (1 - forebet_w) * probs[k] + forebet_w * fp[k]
+                     for k in ("home", "draw", "away")}
+            s = sum(probs.values()) or 1.0
+            probs = {k: v / s for k, v in probs.items()}
+            source = f"{source}+forebet"
+
+        row = {**fx, "source": source,
+               "forebet": forebet_ins, "sofascore": sofa_ins}
         if probs is None:
             row.update({"primary_pick": None,
                         "confidence_tier": "UNPRICED",
@@ -81,5 +133,6 @@ def predict_jackpot(resolved_fixtures: list[dict],
                 tier_info["confidence_tier"] = "LOW"
                 tier_info["reasoning"] += " (capped: thin team history)"
             row.update(tier_info)
+            row["consensus"] = _consensus(row.get("primary_pick"), forebet_ins)
         out.append(row)
     return out
