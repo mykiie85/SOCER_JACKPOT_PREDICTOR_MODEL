@@ -86,6 +86,28 @@ python main.py --force      # send now regardless of schedule
 python main.py --no-cache   # refetch the fixture feed
 ```
 
+## Results grading
+
+After the matches play, `results_main.py` grades the archived predictions
+against SportPesa's own settled 1X2 outcomes and delivers a recap
+(Telegram + email): how many of the 17 picks were correct, per-match final
+scores, and a hit rate by confidence tier.
+
+```
+python results_main.py             # scheduled: grade + send once per jackpot
+python results_main.py --dry-run   # grade + print, send nothing
+python results_main.py --force     # re-send even if already reported
+```
+
+Results come from the same jackpot feed the scraper uses — the live events
+carry a per-match `score` once finished, joined to the archive on the stable
+`event_id`. Because `/jackpots/active` only serves the *current* jackpot, the
+raw results are snapshotted to `data/jackpots/<type>_<human>_results.json` so a
+late grade still works after the feed rolls over. Matches SportPesa settles
+without a score (postponed/void, exposed via `publicDraw`) sit outside the
+correct/played count. A `deploy/jackpot-results.timer` fires at 08:00 and 20:30
+EAT; the run is idempotent via `data/cache/results_sent.json`.
+
 ## Tests
 
 ```bash

@@ -1,0 +1,21 @@
+# /etc/systemd/system/jackpot-results.service
+# System service (runs as the edgebot user), mirroring jackpot-predictor.service.
+# Triggered by jackpot-results.timer.
+[Unit]
+Description=SportPesa Jackpot Predictor — results grader
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=edgebot
+Group=edgebot
+WorkingDirectory=/home/edgebot/jackpot_predictor
+# .env is loaded by the app (python-dotenv in config/settings.py).
+# Reuse EdgeBot's virtualenv — it already has requests/pandas.
+ExecStart=/home/edgebot/edgebot/edgebot_env/bin/python results_main.py
+StandardOutput=append:/home/edgebot/jackpot_predictor/data/logs/run.log
+StandardError=append:/home/edgebot/jackpot_predictor/data/logs/error.log
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,17 @@
+# /etc/systemd/system/jackpot-results.timer
+#
+# Grades a finished jackpot against SportPesa's settled results. Fires twice a
+# day (08:00 and 20:30 EAT): the first catches the overnight settle, the second
+# is a backstop before the feed can roll over to the next jackpot.
+# results_main.py is idempotent (a per-jackpot sent-registry) so extra firings
+# are harmless no-ops.
+[Unit]
+Description=Jackpot Predictor — results grader (08:00 & 20:30 EAT)
+
+[Timer]
+OnCalendar=*-*-* 08:00:00 Africa/Nairobi
+OnCalendar=*-*-* 20:30:00 Africa/Nairobi
+Persistent=true
+
+[Install]
+WantedBy=timers.target
