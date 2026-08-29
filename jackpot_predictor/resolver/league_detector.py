@@ -45,8 +45,12 @@ _RULES: dict[str, list[tuple[str, str | None]]] = {
     "republic of ireland": [("first division", None),
                             ("premier division", "IR1")],
     # ---- tier 2 -----------------------------------------------------------
+    # SportPesa labels the Argentine top flight "Primera LPF" (Liga
+    # Profesional de Futbol) as often as "Primera Division" — without the
+    # alias those fixtures fell through to odds despite AR1 being covered.
     "argentina": [("primera nacional", None), ("primera b", None),
-                  ("primera division", "AR1"), ("liga profesional", "AR1")],
+                  ("primera division", "AR1"), ("liga profesional", "AR1"),
+                  ("primera lpf", "AR1"), ("lpf", "AR1")],
     "austria": [("2. liga", None), ("bundesliga", "AT1")],
     "denmark": [("1st division", None), ("superliga", "DK1"),
                 ("superligaen", "DK1")],
@@ -58,9 +62,18 @@ _RULES: dict[str, list[tuple[str, str | None]]] = {
     "usa": [("usl", None), ("mls", "US1"), ("major league soccer", "US1")],
     "united states": [("usl", None), ("mls", "US1"),
                       ("major league soccer", "US1")],
+    # Added 2026-08-22 with EdgeBot's RO1/RU1 tier-2 history. Second tiers
+    # (Liga 2 / FNL a.k.a. "1. Liga") stay uncovered — the free extra feed
+    # carries the top division only.
+    "romania": [("liga 2", None), ("liga ii", None), ("liga a doua", None),
+                ("superliga", "RO1"), ("liga 1", "RO1"), ("liga i", "RO1")],
+    "russia": [("1. liga", None), ("first league", None), ("fnl", None),
+               ("second league", None), ("premier league", "RU1"),
+               ("premier liga", "RU1")],
 }
 
-TIER2_CODES = {"AR1", "AT1", "DK1", "JP1", "MX1", "PL1", "SZ1", "US1", "E2", "E3"}
+TIER2_CODES = {"AR1", "AT1", "DK1", "JP1", "MX1", "PL1", "SZ1", "US1",
+               "E2", "E3", "RO1", "RU1"}
 
 
 def _norm(s: str) -> str:

@@ -19,18 +19,43 @@ scraper:
 
 # Prediction sources
 predictor:
-  # Minimum rapidfuzz token_sort_ratio for a fuzzy team-name match
-  fuzzy_threshold: 85
+  # Minimum rapidfuzz WRatio (on affix-stripped names) for a fuzzy team match.
+  # Exact and prefix matches bypass this; it only gates the last-resort step.
+  fuzzy_threshold: 88
+  # A fuzzy hit is rejected as ambiguous unless it beats the runner-up by this
+  # many points — "wrong team" is far worse than "fell back to market odds".
+  fuzzy_ambiguity_margin: 6
   # When a fixture's league/teams are outside EdgeBot coverage, fall back to
   # de-vigged SportPesa odds (the jackpot API publishes 1X2 prices per match).
   odds_fallback: true
   # Blend for covered fixtures: p = w*model + (1-w)*odds_implied. 1.0 = model only.
   model_weight: 1.0
 
+# Market-odds calibration, applied to the odds-fallback path only.
+#   method      - how the bookmaker margin is removed from the 1X2 prices.
+#                 "power" (odds-ratio) and "shin" strip proportionally more
+#                 from longshots than "proportional" does, which is the
+#                 documented shape of the favourite-longshot bias.
+#   temperature - p^t renormalized. t > 1 sharpens. Fitted at ~3.0 on the
+#                 first 97 graded matches; held at 1.5 because that estimate
+#                 carries a wide interval on so few games and shrinking a
+#                 noisy calibration parameter toward 1.0 is the safe error.
+#                 NOTE: this is monotone, so it never changes which outcome is
+#                 picked — it only makes the stated confidence honest.
+odds_calibration:
+  method: power
+  temperature: 1.5
+
 # External insight sources (best-effort — failures never block a run)
 insights:
   forebet:
-    enabled: true
+    # OFF since 2026-08-29: Cloudflare has answered 403 to every request from
+    # this host since 2026-07-17 — not a header problem, the plain HTML page is
+    # blocked too, so the documented 0.25 consensus blend has never applied.
+    # The only ways back in are a paid/allow-listed route or a real browser;
+    # until one exists this just spends two failing requests a run. Flip back
+    # to true and re-run to re-test.
+    enabled: false
     # Require BOTH team names to clear this fuzzy score within the fixture's
     # country before trusting a Forebet record.
     min_match_score: 70

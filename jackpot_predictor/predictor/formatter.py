@@ -20,7 +20,12 @@ _TIER_COLOR = {"HIGH": "#1a7f37", "MEDIUM": "#b08800", "LOW": "#bc4c00",
 _SOURCE_LABEL = {"model": "EdgeBot model", "blend": "model + market",
                  "odds": "market odds", "model+forebet": "model + Forebet",
                  "blend+forebet": "model + market + Forebet",
-                 "odds+forebet": "market odds + Forebet", None: "—"}
+                 "odds+forebet": "market odds + Forebet",
+                 # Tier-2 league that failed EdgeBot's quality gate: the model
+                 # exists but loses to the book, so the price is the pick.
+                 "odds_gated": "market odds (model gated)",
+                 "odds_gated+forebet": "market odds (model gated) + Forebet",
+                 None: "—"}
 
 
 def _insight_lines(p: dict) -> list[str]:

@@ -28,16 +28,26 @@ scraper  ──►  resolver  ──►  predictor  ──►  formatter  ──
    (`E0`, `BR1`, ...), then resolves team spellings through three tiers:
    `resolver/mappings.json` → EdgeBot's own alias map → rapidfuzz (≥ 85).
 3. **Predictor** — resolved fixtures go through EdgeBot's fitted ensemble
-   (tier-1 leagues) or the Tier2Stack (Argentina, MLS, ...). Fixtures outside
-   coverage — common in the European off-season when jackpots use Belarus /
-   Uruguay / Brazil Serie C fixtures — fall back to **de-vigged SportPesa
-   odds**, clearly labelled `market odds` in the output.
+   (tier-1 leagues) or the Tier2Stack (Argentina, MLS, Romania, Russia, ...).
+   Fixtures outside coverage — common in the European off-season when jackpots
+   use Belarus / Uruguay / Brazil Serie C fixtures — fall back to **de-vigged
+   SportPesa odds**, clearly labelled `market odds` in the output.
+
+   A tier-2 league whose model fails EdgeBot's quality gate (its walk-forward
+   Brier does not beat the bookmaker baseline by a significant margin) is
+   *also* priced from the odds, labelled `market odds (model gated)`. The model
+   there has been measured as no better than the price it would replace, so it
+   never displaces it; the gated model is used only when no odds are published.
+   As of the 2026-08-29 gate run this covers every tier-2 league.
 4. **Insights** — two best-effort second opinions enrich every fixture:
    - **Forebet** (`scripts/getrs.php` JSON): their 1X2 percentages + predicted
      score, matched country-scoped with both team names above a fuzzy
      threshold. Configurable `blend_weight` (default 0.25) folds Forebet's
      probabilities into ours — agreement sharpens a pick, disagreement pushes
      it toward UNCERTAIN. Consensus is called out per match.
+     **Currently dead:** the endpoint has returned HTTP 403 on every run since
+     2026-07-17, so the blend has not applied since. Runs are unaffected apart
+     from the missing second opinion.
    - **SofaScore** (via EdgeBot's `SofaScoreClient`): last-5 form, standings
      position, fan-vote split and head-to-head, shown per match and in the CSV.
    Both sources degrade gracefully — a block or mismatch never stops a run.

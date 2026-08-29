@@ -94,12 +94,26 @@ class EdgeBotBridge:
 
     def league_teams(self, league_code: str) -> set[str]:
         """All team spellings EdgeBot's history knows for one league."""
+        return set(self.league_team_counts(league_code))
+
+    def league_team_counts(self, league_code: str) -> dict[str, int]:
+        """Team spelling -> number of appearances in that league's history.
+
+        The resolver uses the counts to pick the canonical spelling when two
+        entries normalize identically — EdgeBot's history carries a handful of
+        trailing-whitespace duplicates ("Utrecht" / "Utrecht ") that would
+        otherwise look like a genuine ambiguity and block the match.
+        """
         tier1, tier2 = edgebot_league_codes()
         df = self.history if league_code in tier1 else self.tier2_history
         if df is None or df.empty or "league" not in df.columns:
-            return set()
+            return {}
         sub = df[df["league"] == league_code]
-        return set(sub["HomeTeam"].dropna()) | set(sub["AwayTeam"].dropna())
+        counts: dict[str, int] = {}
+        for col in ("HomeTeam", "AwayTeam"):
+            for name, k in sub[col].dropna().value_counts().items():
+                counts[name] = counts.get(name, 0) + int(k)
+        return counts
 
     # -------------------------------------------------------------- models
     @property
@@ -137,7 +151,14 @@ class EdgeBotBridge:
         Each input dict needs: league_code, home_team_canonical,
         away_team_canonical, tier (1 or 2). Returns per fixture either
         ``{"home": p, "draw": p, "away": p, "low_confidence": bool,
-        "unknown_team": str|None}`` or None when no model could price it.
+        "tier2_gated": bool, "unknown_team": str|None}`` or None when no model
+        could price it.
+
+        ``tier2_gated`` is Tier2Stack's own verdict that the league failed its
+        walk-forward quality gate (data_cache/tier2_gates.json) — i.e. EdgeBot
+        measured the model as worse than the bookmaker there. It is passed
+        through verbatim so the engine can prefer the market price instead of
+        silently down-labelling a prediction it should not be making.
         """
         results: list[dict | None] = [None] * len(fixtures)
         for tier in (1, 2):
@@ -168,6 +189,7 @@ class EdgeBotBridge:
                 results[i] = {
                     "home": float(h), "draw": float(d), "away": float(a),
                     "low_confidence": bool(r.get("low_confidence", False)),
+                    "tier2_gated": bool(r.get("tier2_gated", False)),
                     "unknown_team": r.get("unknown_team") or None,
                 }
         return results
