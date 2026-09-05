@@ -69,6 +69,20 @@ def main(dry_run: bool = False, force: bool = False) -> int:
                  jackpot["human_id"])
         return 0
 
+    # Record model-vs-market on every settled fixture before anything else can
+    # return early. This is the only leak-free measurement of the deployed
+    # stack, so it must not depend on whether a recap happens to be sent.
+    from jackpot_predictor.results.grader import (format_production_summary,
+                                                  log_production_results,
+                                                  production_summary)
+    try:
+        stats = log_production_results(archive, graded)
+        log.info("production log: %d new, %d already recorded, %d total",
+                 stats["written"], stats["skipped"], stats["total"])
+        log.info("%s", format_production_summary(production_summary()))
+    except Exception as e:  # noqa: BLE001 - measurement must never block a recap
+        log.warning("production log failed: %s", e)
+
     from jackpot_predictor.results.formatter import format_html, format_telegram
     telegram_text = format_telegram(graded, jackpot, source)
     html_body = format_html(graded, jackpot, source)
