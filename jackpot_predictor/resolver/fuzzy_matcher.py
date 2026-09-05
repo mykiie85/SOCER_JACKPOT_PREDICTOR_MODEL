@@ -7,7 +7,7 @@ football-data.co.uk drops ("Parma Calcio" vs "Parma", "KAA Gent" vs "Gent",
 real cases, so almost every covered fixture silently fell through to the odds
 fallback.
 
-The matcher below works in four escalating steps, all scoped to a single
+The matcher below works in five escalating steps, all scoped to a single
 league's roster:
 
 1. exact spelling
@@ -19,7 +19,11 @@ league's roster:
    that accounts for MORE of the raw name, so "Independiente Rivadavia" lands
    on "Ind. Rivadavia" and not on "Independiente" — a different club in the
    same league
-4. rapidfuzz WRatio on the affix-stripped forms, gated by an ambiguity margin
+4. the same leading-run preference, but matched *fuzzily* — SportPesa spells
+   a club "Espanyol Barcelona" where football-data writes "Espanol", so step 3
+   misses and step 5 would otherwise award the match to the trailing token,
+   Barcelona, a different club in the same league
+5. rapidfuzz WRatio on the affix-stripped forms, gated by an ambiguity margin
    so a near-tie is reported unresolved instead of guessed
 
 Wrong is worse than unknown here: an unresolved fixture falls back to market
@@ -101,11 +105,13 @@ def _covered(cand_norm: str, raw_tokens: list[str]) -> int:
 
 def match_team(raw: str, candidates, threshold: float = 88.0,
                ambiguity_margin: float = 6.0,
-               counts: dict | None = None) -> tuple[str | None, str, float]:
+               counts: dict | None = None,
+               lead_threshold: float = 88.0) -> tuple[str | None, str, float]:
     """Best match for ``raw`` in one league's roster.
 
     Returns ``(canonical_name_or_None, method, score)``. ``method`` is one of
-    exact / normalized / prefix[n] / fuzzy / ambiguous / unresolved and is kept
+    exact / normalized / prefix[n] / lead-fuzzy[n] / fuzzy / ambiguous /
+    unresolved and is kept
     for the admin digest so a bad mapping is traceable.
     """
     cands = list(candidates)
@@ -140,6 +146,23 @@ def match_team(raw: str, candidates, threshold: float = 88.0,
             if len(fuller) > 1:
                 return None, f"ambiguous({fuller[0]}~{fuller[1]})", 0.0
         return by_norm[pref], f"prefix[{take}]", 100.0
+
+    # Fuzzy leading-token preference, for a raw name whose leading run *nearly*
+    # names a club. The exact loop above fires only on an exact spelling, so
+    # "Espanyol Barcelona" — football-data writes that club "Espanol" — misses
+    # it and the whole-string scorer below then takes the trailing token, which
+    # is Barcelona: a different club in the same league, priced off the wrong
+    # side's form. Only runs while a trailing remainder exists, which is the
+    # only place that failure is possible; a whole-name near-miss is left to
+    # the better-tested WRatio step.
+    for take in range(len(rt) - 1, 0, -1):
+        pref = " ".join(rt[:take])
+        near = process.extract(pref, list(by_norm), scorer=fuzz.ratio, limit=2)
+        if not near or near[0][1] < lead_threshold:
+            continue
+        if len(near) > 1 and near[0][1] - near[1][1] < ambiguity_margin:
+            return None, f"ambiguous({near[0][0]}~{near[1][0]})", float(near[0][1])
+        return by_norm[near[0][0]], f"lead-fuzzy[{take}]", float(near[0][1])
 
     scored = process.extract(n, list(by_norm), scorer=fuzz.WRatio, limit=2)
     if not scored:

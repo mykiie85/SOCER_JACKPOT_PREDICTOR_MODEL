@@ -59,6 +59,21 @@ def test_matcher_prefers_leading_tokens_over_trailing_city():
     assert match_team("Wisla Krakow", {"Wisla", "Wisla Plock"})[0] == "Wisla"
 
 
+def test_matcher_prefers_a_misspelled_leading_club_over_a_trailing_one():
+    """SportPesa writes "Espanyol Barcelona"; football-data writes that club
+    "Espanol". The leading run therefore misses an exact match and the
+    whole-string scorer took the trailing token — Barcelona, a different club
+    in the same league — pricing Espanyol's match off Barcelona's form at 0.80
+    home. A near-miss on the leading run has to beat an exact trailing one.
+    Live on Supa17 #233 (2026-09-05) before it was caught."""
+    roster = {"Espanol", "Barcelona", "Sevilla", "Vallecano", "Santander"}
+    assert match_team("Espanyol Barcelona", roster)[0] == "Espanol"
+    # ...but a leading token that names no club must still yield to the tail,
+    # or Rayo Vallecano and Racing Santander stop resolving at all.
+    assert match_team("Rayo Vallecano", roster)[0] == "Vallecano"
+    assert match_team("Racing Santander", roster)[0] == "Santander"
+
+
 def test_matcher_refuses_ambiguous_match():
     """A near-tie must stay unresolved so the fixture falls back to odds."""
     hit, method, _ = match_team("Sporting", {"Sporting Lisbon", "Sporting Gijon"})
