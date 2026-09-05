@@ -1,4 +1,25 @@
-"""Classify 1X2 probabilities into human-readable confidence tiers."""
+"""Classify 1X2 probabilities into human-readable confidence tiers.
+
+**The tiers are force-capped to UNCERTAIN** (``confidence.force_uncertain``).
+Graded to 2026-09-05 they carried *negative* information — the label was
+anti-correlated with being right:
+
+    tier        n    hit     stated
+    HIGH        3   33.3%    57.7%
+    MEDIUM     10   40.0%    48.7%
+    LOW        24   70.8%    42.0%
+    UNCERTAIN  94   35.1%    37.7%
+
+A reader who trusted the labels would have done worse than one who ignored
+them, so publishing them is worse than publishing nothing. The margin-and-
+threshold rules below are left intact and still computed, because they are what
+a re-enabling audit has to re-measure; only the emitted label is overridden,
+and ``uncapped_confidence_tier`` keeps the original so the audit can run on
+live output. Re-enable via ``scripts/audit_confidence.py``, which sets the bar:
+the probability reliability curve must be monotone AND a hold-out must show
+HIGH > MEDIUM > LOW by hit rate. n=3 in HIGH is far too thin to conclude
+anything yet — the cap stays until the sample can carry the claim.
+"""
 from __future__ import annotations
 
 from enum import Enum
@@ -41,12 +62,19 @@ def classify_prediction(home_prob: float, draw_prob: float,
         tier = ConfidenceTier.LOW
         reasoning = f"Weak signal — {v1:.1%} for {PICK_LABEL[p1]}"
 
-    return {
+    out = {
         "primary_pick": p1,
         "primary_prob": v1,
         "secondary_pick": p2,
         "secondary_prob": v2,
         "margin": margin,
         "confidence_tier": tier.value,
+        "uncapped_confidence_tier": tier.value,
         "reasoning": reasoning,
     }
+    if cfg.get("force_uncertain", True):
+        out["confidence_tier"] = ConfidenceTier.UNCERTAIN.value
+        out["reasoning"] = (
+            f"{reasoning} — confidence tiers are suspended; graded results "
+            "show the labels carry no usable signal")
+    return out

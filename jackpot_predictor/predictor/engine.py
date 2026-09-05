@@ -185,8 +185,15 @@ def predict_jackpot(resolved_fixtures: list[dict],
                         "prob_away": probs["away"]})
             tier_info = classify_prediction(
                 probs["home"], probs["draw"], probs["away"])
-            if low_conf and tier_info["confidence_tier"] in ("HIGH", "MEDIUM"):
-                tier_info["confidence_tier"] = "LOW"
+            # Cap the *uncapped* verdict, so the record stays honest while
+            # confidence.force_uncertain is overriding the published label.
+            if low_conf and tier_info["uncapped_confidence_tier"] in ("HIGH",
+                                                                      "MEDIUM"):
+                forced = (tier_info["confidence_tier"]
+                          != tier_info["uncapped_confidence_tier"])
+                tier_info["uncapped_confidence_tier"] = "LOW"
+                if not forced:
+                    tier_info["confidence_tier"] = "LOW"
                 tier_info["reasoning"] += " (capped: thin team history)"
             row.update(tier_info)
             row["consensus"] = _consensus(row.get("primary_pick"), forebet_ins)

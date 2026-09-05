@@ -2,6 +2,15 @@
 
 # Confidence tier thresholds (probability of the top pick + margin over 2nd)
 confidence:
+  # Every published pick is labelled UNCERTAIN regardless of the thresholds
+  # below. On the 131 graded fixtures to 2026-09-05 the labels were
+  # anti-correlated with accuracy — HIGH hit 33% (n=3) while LOW hit 71%
+  # (n=24) — so they misled rather than informed. The thresholds still run and
+  # the verdict is kept as `uncapped_confidence_tier` so the suspension can be
+  # audited on live output. Set to false only after
+  # scripts/audit_confidence.py reports a monotone reliability curve AND
+  # HIGH > MEDIUM > LOW on a hold-out.
+  force_uncertain: true
   high:
     min_primary_prob: 0.55
     min_margin: 0.15

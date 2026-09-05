@@ -3,10 +3,21 @@ from jackpot_predictor.predictor.odds_fallback import implied_probabilities
 
 
 def test_tiers():
-    assert classify_prediction(0.60, 0.25, 0.15)["confidence_tier"] == "HIGH"
-    assert classify_prediction(0.48, 0.30, 0.22)["confidence_tier"] == "MEDIUM"
-    assert classify_prediction(0.40, 0.35, 0.25)["confidence_tier"] == "UNCERTAIN"
-    assert classify_prediction(0.42, 0.30, 0.28)["confidence_tier"] == "LOW"
+    # The threshold logic still runs and is recorded; only the *published*
+    # label is suspended (see test_every_published_tier_is_uncertain).
+    assert classify_prediction(0.60, 0.25, 0.15)["uncapped_confidence_tier"] == "HIGH"
+    assert classify_prediction(0.48, 0.30, 0.22)["uncapped_confidence_tier"] == "MEDIUM"
+    assert classify_prediction(0.40, 0.35, 0.25)["uncapped_confidence_tier"] == "UNCERTAIN"
+    assert classify_prediction(0.42, 0.30, 0.28)["uncapped_confidence_tier"] == "LOW"
+
+
+def test_every_published_tier_is_uncertain():
+    """Graded results showed the labels anti-correlated with accuracy (HIGH
+    hit 33%, LOW hit 71%), so no pick may advertise confidence until an audit
+    clears them."""
+    for probs in ((0.60, 0.25, 0.15), (0.48, 0.30, 0.22), (0.40, 0.35, 0.25),
+                  (0.42, 0.30, 0.28), (0.90, 0.06, 0.04)):
+        assert classify_prediction(*probs)["confidence_tier"] == "UNCERTAIN"
 
 
 def test_tier_fields():
@@ -91,7 +102,8 @@ def test_gated_tier2_falls_back_to_the_model_when_no_odds_published():
                     "unknown_team": None})
     assert row["source"] == "model"
     assert abs(row["prob_home"] - 0.60) < 1e-9
-    assert row["confidence_tier"] == "LOW"      # capped, not HIGH
+    assert row["uncapped_confidence_tier"] == "LOW"      # capped, not HIGH
+    assert row["confidence_tier"] == "UNCERTAIN"         # tiers suspended
 
 
 def test_ungated_tier2_model_is_still_used():
@@ -101,7 +113,7 @@ def test_ungated_tier2_model_is_still_used():
                     "unknown_team": None})
     assert row["source"] == "model"
     assert abs(row["prob_home"] - 0.60) < 1e-9
-    assert row["confidence_tier"] == "HIGH"
+    assert row["uncapped_confidence_tier"] == "HIGH"
 
 
 # ── Tier-1 quality gate ──────────────────────────────────────────────────────
@@ -185,7 +197,8 @@ def test_gated_tier1_falls_back_to_the_model_when_no_odds_published():
                     "low_confidence": False, "tier1_gated": True,
                     "tier2_gated": False, "gated": True, "unknown_team": None})
     assert row["source"] == "model"
-    assert row["confidence_tier"] == "LOW"      # capped, not HIGH
+    assert row["uncapped_confidence_tier"] == "LOW"      # capped, not HIGH
+    assert row["confidence_tier"] == "UNCERTAIN"         # tiers suspended
 
 
 def test_ungated_tier1_model_is_still_used():
