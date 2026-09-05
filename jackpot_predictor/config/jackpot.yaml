@@ -30,6 +30,19 @@ predictor:
   odds_fallback: true
   # Blend for covered fixtures: p = w*model + (1-w)*odds_implied. 1.0 = model only.
   model_weight: 1.0
+  # Tier-1 quality gate (the tier-2 equivalent lives inside EdgeBot's
+  # Tier2Stack and needs no config here). Reads EdgeBot's
+  # data_cache/tier1_gates.json, written by train_tier1_gate.py --write-gates:
+  # a league whose walk-forward Brier does not significantly beat the
+  # bookmaker's never displaces the market price. On the 2026-09-05 run that is
+  # every one of the 22 tier-1 leagues, so this effectively routes tier-1
+  # through de-vigged odds until a league earns its way back.
+  tier1_gate:
+    enabled: true
+    # Policy for a tier-1 league with no gate entry (or no gates file at all).
+    # "fail" = treat as gated out. Unknown is not the same as passing, and the
+    # measured pass rate is 0 of 22, so the safe reading of silence is failure.
+    missing: fail
 
 # Market-odds calibration, applied to the odds-fallback path only.
 #   method      - how the bookmaker margin is removed from the 1X2 prices.

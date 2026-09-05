@@ -24,6 +24,7 @@ from pathlib import Path
 import pandas as pd
 
 from jackpot_predictor.config.settings import EDGEBOT_PATH
+from jackpot_predictor.predictor.gates import tier1_gate_passed
 
 log = logging.getLogger(__name__)
 
@@ -159,6 +160,16 @@ class EdgeBotBridge:
         measured the model as worse than the bookmaker there. It is passed
         through verbatim so the engine can prefer the market price instead of
         silently down-labelling a prediction it should not be making.
+
+        ``tier1_gated`` is the same verdict for tier-1, read here from
+        data_cache/tier1_gates.json because the tier-1 ensemble — unlike
+        Tier2Stack — knows nothing about gates. ``gated`` is the union of the
+        two, so the engine applies one rule to both tiers.
+
+        The probability is still returned for a gated fixture: the engine will
+        not pick from it, but the graded production log scores it against the
+        market, which is the only out-of-sample evidence that can ever reopen
+        the gate. It is also the fallback when a fixture has no odds at all.
         """
         results: list[dict | None] = [None] * len(fixtures)
         for tier in (1, 2):
@@ -186,10 +197,15 @@ class EdgeBotBridge:
                 h, d, a = r.get("p_home"), r.get("p_draw"), r.get("p_away")
                 if h is None or pd.isna(h):
                     continue
+                tier2_gated = bool(r.get("tier2_gated", False))
+                tier1_gated = (tier == 1
+                               and not tier1_gate_passed(fixtures[i]["league_code"]))
                 results[i] = {
                     "home": float(h), "draw": float(d), "away": float(a),
                     "low_confidence": bool(r.get("low_confidence", False)),
-                    "tier2_gated": bool(r.get("tier2_gated", False)),
+                    "tier2_gated": tier2_gated,
+                    "tier1_gated": tier1_gated,
+                    "gated": tier1_gated or tier2_gated,
                     "unknown_team": r.get("unknown_team") or None,
                 }
         return results

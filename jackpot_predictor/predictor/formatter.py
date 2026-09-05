@@ -21,8 +21,9 @@ _SOURCE_LABEL = {"model": "EdgeBot model", "blend": "model + market",
                  "odds": "market odds", "model+forebet": "model + Forebet",
                  "blend+forebet": "model + market + Forebet",
                  "odds+forebet": "market odds + Forebet",
-                 # Tier-2 league that failed EdgeBot's quality gate: the model
-                 # exists but loses to the book, so the price is the pick.
+                 # League that failed EdgeBot's walk-forward quality gate
+                 # (tier-1 or tier-2): the model exists but loses to the book,
+                 # so the price is the pick.
                  "odds_gated": "market odds (model gated)",
                  "odds_gated+forebet": "market odds (model gated) + Forebet",
                  None: "—"}

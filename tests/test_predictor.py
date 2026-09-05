@@ -102,3 +102,106 @@ def test_ungated_tier2_model_is_still_used():
     assert row["source"] == "model"
     assert abs(row["prob_home"] - 0.60) < 1e-9
     assert row["confidence_tier"] == "HIGH"
+
+
+# ── Tier-1 quality gate ──────────────────────────────────────────────────────
+# Tier-1 was exempt from the rule above only because nothing read
+# data_cache/tier1_gates.json, and ~80% of jackpot fixtures are tier-1. The
+# 2026-09-05 walk-forward found 0 of 22 tier-1 leagues beat the closing line,
+# so the same rule now applies to both tiers.
+
+import json as _json
+
+from jackpot_predictor.predictor import gates as _gates
+
+
+def _tier1_fixture(**over):
+    fx = {"event_id": "e2", "match_number": 2,
+          "home_team_raw": "Arsenal", "away_team_raw": "Everton",
+          "tournament": "Premier League", "country": "England",
+          "kickoff_utc": "2026-08-30T15:00:00Z",
+          "league_code": "E0", "tier": 1, "resolved": True,
+          "home_team_canonical": "Arsenal", "away_team_canonical": "Everton",
+          "odds_home": 2.0, "odds_draw": 3.5, "odds_away": 4.0}
+    fx.update(over)
+    return fx
+
+
+def _with_gates(gates, fn):
+    """Run fn() with load_tier1_gates() stubbed to `gates`."""
+    original = _gates.load_tier1_gates
+    _gates.load_tier1_gates = lambda: gates
+    try:
+        return fn()
+    finally:
+        _gates.load_tier1_gates = original
+
+
+def test_failing_tier1_league_is_gated_out():
+    assert _with_gates({"E0": {"pass": False}},
+                       lambda: _gates.tier1_gate_passed("E0")) is False
+
+
+def test_passing_tier1_league_clears_the_gate():
+    assert _with_gates({"E0": {"pass": True}},
+                       lambda: _gates.tier1_gate_passed("E0")) is True
+
+
+def test_unknown_tier1_league_fails_closed():
+    # No gate record is not evidence of an edge — and the measured pass rate
+    # across the whole tier is zero — so silence must read as failure.
+    assert _with_gates({}, lambda: _gates.tier1_gate_passed("XX1")) is False
+    assert _gates.tier1_gate_passed(None) is False
+
+
+def test_gated_tier1_model_never_displaces_the_market():
+    row = _predict(_tier1_fixture(),
+                   {"home": 0.60, "draw": 0.25, "away": 0.15,
+                    "low_confidence": False, "tier1_gated": True,
+                    "tier2_gated": False, "gated": True, "unknown_team": None})
+    odds = implied_probabilities(2.0, 3.5, 4.0)
+    assert row["source"] == "odds_gated"
+    assert abs(row["prob_home"] - odds["home"]) < 1e-9
+    assert any("gated out" in n for n in row["resolve_notes"])
+
+
+def test_gated_tier1_still_records_both_probabilities():
+    # The pick comes from the market, but the grader needs the model's number
+    # too — model-vs-market on graded slates is the only evidence that can
+    # ever reopen the gate.
+    row = _predict(_tier1_fixture(),
+                   {"home": 0.60, "draw": 0.25, "away": 0.15,
+                    "low_confidence": False, "tier1_gated": True,
+                    "tier2_gated": False, "gated": True, "unknown_team": None})
+    assert abs(row["model_prob_home"] - 0.60) < 1e-9
+    assert abs(row["market_prob_home"] - row["prob_home"]) < 1e-9
+    assert row["model_gated"] is True
+
+
+def test_gated_tier1_falls_back_to_the_model_when_no_odds_published():
+    row = _predict(_tier1_fixture(odds_home=None, odds_draw=None,
+                                  odds_away=None),
+                   {"home": 0.60, "draw": 0.25, "away": 0.15,
+                    "low_confidence": False, "tier1_gated": True,
+                    "tier2_gated": False, "gated": True, "unknown_team": None})
+    assert row["source"] == "model"
+    assert row["confidence_tier"] == "LOW"      # capped, not HIGH
+
+
+def test_ungated_tier1_model_is_still_used():
+    row = _predict(_tier1_fixture(),
+                   {"home": 0.60, "draw": 0.25, "away": 0.15,
+                    "low_confidence": False, "tier1_gated": False,
+                    "tier2_gated": False, "gated": False, "unknown_team": None})
+    assert row["source"] == "model"
+    assert abs(row["prob_home"] - 0.60) < 1e-9
+
+
+def test_gates_file_shape_matches_what_edgebot_writes():
+    """The real file must still be readable in the shape the gate expects."""
+    path = _gates.gates_path()
+    if not path.exists():
+        return
+    gates = _json.loads(path.read_text(encoding="utf-8"))
+    assert isinstance(gates, dict) and gates
+    assert all("pass" in g for g in gates.values())
