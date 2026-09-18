@@ -76,6 +76,31 @@ def _title(jackpot: dict) -> str:
                               f"Jackpot {jackpot['number_of_events']}")
 
 
+def _stage_line(stage: str | None, jackpot: dict) -> str:
+    """One line saying which delivery this is and what follows."""
+    if stage == "preview":
+        st = jackpot_config()["schedule"].get("stages", {}).get("final", {})
+        hour = int(st.get("send_hour_eat", 11))
+        return (f"PREVIEW — prices as of now; a FINAL update with refreshed "
+                f"prices follows on match day at {hour:02d}:00 EAT")
+    if stage == "final":
+        ko = jackpot.get("first_kickoff_utc")
+        if ko:
+            hrs = (datetime.fromisoformat(ko.replace("Z", "+00:00"))
+                   - datetime.now(timezone.utc)).total_seconds() / 3600
+            return f"FINAL — prices refreshed {hrs:.0f} h before first kickoff"
+        return "FINAL — prices refreshed"
+    return ""
+
+
+def _source_label(p: dict) -> str:
+    label = _SOURCE_LABEL.get(p.get("source"), p.get("source"))
+    src = p.get("odds_source")
+    if src and src != "sportpesa":
+        label = f"{label} via {src}"
+    return label
+
+
 def _pick_line(p: dict) -> str:
     pick = p["primary_pick"]
     return (f"{PICK_DISPLAY[pick]} ({PICK_LABEL[pick]}) — "
@@ -93,14 +118,17 @@ def _summary(predictions: list[dict]) -> tuple[Counter, Counter, str]:
     return tiers, picks, note
 
 
-def format_telegram(jackpot: dict, predictions: list[dict]) -> str:
+def format_telegram(jackpot: dict, predictions: list[dict],
+                    stage: str | None = None) -> str:
     lines = [
         f"🎯 SportPesa {_title(jackpot)} — Predictions",
         f"Jackpot #{jackpot['human_id']} | first kickoff: "
         f"{_eat(jackpot['first_kickoff_utc'])}",
         f"Generated: {_eat(datetime.now(timezone.utc).isoformat())}",
-        "",
     ]
+    if stage:
+        lines.append(_stage_line(stage, jackpot))
+    lines.append("")
     for p in predictions:
         head = (f"Match {p['match_number']}: {p['home_team_raw']} vs "
                 f"{p['away_team_raw']}")
@@ -113,7 +141,7 @@ def format_telegram(jackpot: dict, predictions: list[dict]) -> str:
             lines.append(
                 f"  Alt: {PICK_DISPLAY[p['secondary_pick']]} — "
                 f"{p['secondary_prob']:.1%} | margin {p['margin']:.1%} | "
-                f"{_SOURCE_LABEL.get(p['source'], p['source'])}")
+                f"{_source_label(p)}")
         else:
             lines.append("  ⚪ UNPRICED — no pick (see notes)")
         lines.extend(_insight_lines(p))
@@ -147,7 +175,8 @@ def format_telegram(jackpot: dict, predictions: list[dict]) -> str:
     return "\n".join(lines)
 
 
-def format_html(jackpot: dict, predictions: list[dict]) -> str:
+def format_html(jackpot: dict, predictions: list[dict],
+                stage: str | None = None) -> str:
     tiers, picks, note = _summary(predictions)
     rows = []
     for p in predictions:
@@ -170,12 +199,12 @@ def format_html(jackpot: dict, predictions: list[dict]) -> str:
             f"<td style='text-align:center'>{probs}</td>"
             f"<td style='text-align:center'>{alt}</td>"
             f"<td style='color:{color};font-weight:bold'>{tier}</td>"
-            f"<td><small>{_SOURCE_LABEL.get(p.get('source'), p.get('source'))}"
-            f"</small></td>"
+            f"<td><small>{_source_label(p)}</small></td>"
             f"<td><small>{insight}</small></td></tr>")
 
     return f"""<html><body style="font-family:Segoe UI,Arial,sans-serif;color:#1f2328">
 <h2>🎯 SportPesa {_title(jackpot)} — Predictions</h2>
+{("<p><b>" + _stage_line(stage, jackpot) + "</b></p>") if stage else ""}
 <p>Jackpot #{jackpot['human_id']} &nbsp;|&nbsp; first kickoff:
 {_eat(jackpot['first_kickoff_utc'])} &nbsp;|&nbsp; generated
 {_eat(datetime.now(timezone.utc).isoformat())}</p>
@@ -241,13 +270,17 @@ def write_csv(jackpot: dict, predictions: list[dict], path) -> None:
             ])
 
 
-def save_outputs(jackpot: dict, predictions: list[dict]) -> dict:
+def save_outputs(jackpot: dict, predictions: list[dict],
+                 stage: str | None = None) -> dict:
     """Persist telegram/html/csv/json under data/jackpots/ and return paths+text."""
     stamp = datetime.now(timezone.utc).strftime("%Y%m%d")
     base = JACKPOTS_DIR / f"{jackpot['jackpot_type']}_{jackpot['human_id']}_{stamp}"
+    if stage:
+        base = base.with_name(f"{base.name}_{stage}")
+    jackpot = {**jackpot, "stage": stage}
 
-    telegram_text = format_telegram(jackpot, predictions)
-    html_body = format_html(jackpot, predictions)
+    telegram_text = format_telegram(jackpot, predictions, stage=stage)
+    html_body = format_html(jackpot, predictions, stage=stage)
 
     (base.with_suffix(".txt")).write_text(telegram_text, encoding="utf-8")
     (base.with_suffix(".html")).write_text(html_body, encoding="utf-8")

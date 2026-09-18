@@ -43,6 +43,7 @@ from jackpot_predictor.predictor.confidence_tier import classify_prediction
 from jackpot_predictor.predictor.edgebot_bridge import EdgeBotBridge
 from jackpot_predictor.predictor.gates import gate_note
 from jackpot_predictor.predictor.odds_fallback import implied_probabilities
+from jackpot_predictor.predictor.sharp_odds import apply_sharp_odds
 
 log = logging.getLogger(__name__)
 
@@ -109,6 +110,12 @@ def predict_jackpot(resolved_fixtures: list[dict],
     forebet_w = float(icfg.get("blend_weight", 0.0)) if icfg.get(
         "enabled", True) else 0.0
     forebet_map, sofa_map = _collect_insights(resolved_fixtures, jackpot_id)
+    # Sharper 1X2 prices (Pinnacle / EU median) where The Odds API carries the
+    # league; SportPesa's own price is the fallback and stays on the row.
+    try:
+        apply_sharp_odds(resolved_fixtures)
+    except Exception as e:  # noqa: BLE001
+        log.warning("sharp odds skipped: %s", e)
 
     modelable = [f for f in resolved_fixtures if f.get("resolved")]
     model_results: dict[int, dict | None] = {}
@@ -120,8 +127,14 @@ def predict_jackpot(resolved_fixtures: list[dict],
 
     out = []
     for fx in resolved_fixtures:
-        odds_p = implied_probabilities(
+        sportpesa_p = implied_probabilities(
             fx.get("odds_home"), fx.get("odds_draw"), fx.get("odds_away"))
+        if fx.get("sharp_odds_home") is not None:
+            odds_p = implied_probabilities(
+                fx["sharp_odds_home"], fx["sharp_odds_draw"], fx["sharp_odds_away"])
+            odds_source = fx.get("sharp_book") or "sharp"
+        else:
+            odds_p, odds_source = sportpesa_p, "sportpesa"
         model_p = model_results.get(id(fx))
 
         source, probs, low_conf = None, None, False
@@ -161,7 +174,7 @@ def predict_jackpot(resolved_fixtures: list[dict],
             probs = {k: v / s for k, v in probs.items()}
             source = f"{source}+forebet"
 
-        row = {**fx, "source": source,
+        row = {**fx, "source": source, "odds_source": odds_source,
                "forebet": forebet_ins, "sofascore": sofa_ins,
                "model_gated": bool(model_p and _is_gated(model_p)),
                "tier1_gated": bool(model_p and model_p.get("tier1_gated")),
@@ -173,6 +186,10 @@ def predict_jackpot(resolved_fixtures: list[dict],
                         for k in ("home", "draw", "away")})
         if odds_p is not None:
             row.update({f"market_prob_{k}": odds_p[k]
+                        for k in ("home", "draw", "away")})
+        if sportpesa_p is not None and odds_source != "sportpesa":
+            # Both prices on the row: the grader can score sharp vs SportPesa.
+            row.update({f"sportpesa_prob_{k}": sportpesa_p[k]
                         for k in ("home", "draw", "away")})
         if probs is None:
             row.update({"primary_pick": None,

@@ -52,6 +52,16 @@ predictor:
     # "fail" = treat as gated out. Unknown is not the same as passing, and the
     # measured pass rate is 0 of 22, so the safe reading of silence is failure.
     missing: fail
+  # Sharper prices than SportPesa's for the leagues The Odds API carries
+  # (EdgeBot's keys; one credit per league per run). The pick IS the price
+  # once every model is gated, so this is the one free lever on pick
+  # quality. Pinnacle preferred, else the median across EU books; SportPesa's
+  # own price is the fallback and is always kept on the row for comparison.
+  sharp_odds:
+    enabled: true
+    prefer_book: pinnacle
+    kickoff_tolerance_hours: 3
+    min_match_score: 80
 
 # Market-odds calibration, applied to the odds-fallback path only.
 #   method      - how the bookmaker margin is removed from the 1X2 prices.
@@ -88,11 +98,20 @@ insights:
     enabled: true
     min_match_score: 65
 
-# Scheduling: send predictions N days before the earliest kickoff, at HH:MM EAT
+# Scheduling. Each stage sends the full slate: the preview N days before the
+# earliest kickoff, the final on match day with prices refreshed (the timer
+# fires main.py at both hours; a missed firing is caught up on the next one).
+# Archive check (224 Supa jackpots): earliest first kickoff ever 13:00 EAT,
+# so 11:00 EAT is always before the slate closes.
 schedule:
-  days_before: 2
-  send_hour_eat: 20
   timezone: "Africa/Nairobi"
+  stages:
+    preview:
+      days_before: 2
+      send_hour_eat: 20
+    final:
+      days_before: 0
+      send_hour_eat: 11
 
 # Delivery
 delivery:

@@ -76,12 +76,15 @@ def _tier2_fixture(**over):
 def _predict(fixture, model_result, monkeypatched=None):
     """Run predict_jackpot with insights stubbed out (no network in tests)."""
     original = _engine._collect_insights
+    original_sharp = _engine.apply_sharp_odds
     _engine._collect_insights = lambda fixtures, jackpot_id: ({}, {})
+    _engine.apply_sharp_odds = lambda fixtures: 0      # no Odds API in tests
     try:
         return _engine.predict_jackpot(
             [fixture], bridge=_StubBridge([model_result]))[0]
     finally:
         _engine._collect_insights = original
+        _engine.apply_sharp_odds = original_sharp
 
 
 def test_gated_tier2_model_never_displaces_the_market():
