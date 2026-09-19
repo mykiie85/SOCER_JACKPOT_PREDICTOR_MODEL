@@ -221,3 +221,18 @@ def test_gates_file_shape_matches_what_edgebot_writes():
     gates = _json.loads(path.read_text(encoding="utf-8"))
     assert isinstance(gates, dict) and gates
     assert all("pass" in g for g in gates.values())
+
+
+def test_formatter_sorts_by_confidence_and_marks_top_13():
+    from jackpot_predictor.predictor import formatter as F
+    preds = []
+    for n in range(1, 18):
+        preds.append({"match_number": n, "primary_pick": "H",
+                      "primary_prob": 0.30 + n / 100})  # match 17 strongest
+    preds[0] = {"match_number": 1, "primary_pick": None}  # unpriced
+    ordered, ranks = F._ranked(preds)
+    assert [p["match_number"] for p in ordered[:3]] == [17, 16, 15]
+    assert ordered[-1]["match_number"] == 1 and 1 not in ranks
+    block = F._top_block({"number_of_events": 17}, preds)
+    assert block[1].split()[0] == "5:1"  # matches 5..17, coupon order
+    assert F._top_block({"number_of_events": 13}, preds[:13]) == []

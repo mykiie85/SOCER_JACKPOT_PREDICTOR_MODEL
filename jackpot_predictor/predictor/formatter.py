@@ -4,6 +4,7 @@ from __future__ import annotations
 import csv
 import json
 import logging
+import math
 from collections import Counter
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
@@ -107,6 +108,38 @@ def _pick_line(p: dict) -> str:
             f"{p['primary_prob']:.1%}")
 
 
+# The smallest Supa prize tier: the player picks 13 of the 17 fixtures.
+TOP_N = 13
+
+
+def _ranked(predictions: list[dict]) -> tuple[list[dict], dict[int, int]]:
+    """Priced fixtures by pick probability (highest first), unpriced last.
+
+    Returns the ordered list and {match_number: rank} for the priced ones."""
+    priced = sorted((p for p in predictions if p.get("primary_pick")),
+                    key=lambda p: (-p["primary_prob"], p["match_number"]))
+    unpriced = [p for p in predictions if not p.get("primary_pick")]
+    ranks = {p["match_number"]: i for i, p in enumerate(priced, 1)}
+    return priced + unpriced, ranks
+
+
+def _top_block(jackpot: dict, predictions: list[dict]) -> list[str]:
+    """The TOP-13 selection in slate order, ready to copy onto the coupon."""
+    if jackpot["number_of_events"] <= TOP_N:
+        return []
+    ordered, _ = _ranked(predictions)
+    top = sorted(ordered[:TOP_N], key=lambda p: p["match_number"])
+    if len(top) < TOP_N or not all(p.get("primary_pick") for p in top):
+        return []
+    joint = math.prod(p["primary_prob"] for p in top)
+    return [
+        f"⭐ TOP {TOP_N} (for {TOP_N}/{TOP_N}), in coupon order:",
+        "  " + "  ".join(f"{p['match_number']}:{PICK_DISPLAY[p['primary_pick']]}"
+                         for p in top),
+        f"  Chance all {TOP_N} are right: about 1 in {round(1 / joint):,}",
+    ]
+
+
 def _summary(predictions: list[dict]) -> tuple[Counter, Counter, str]:
     tiers = Counter(p["confidence_tier"] for p in predictions)
     picks = Counter(p["primary_pick"] for p in predictions if p.get("primary_pick"))
@@ -128,9 +161,15 @@ def format_telegram(jackpot: dict, predictions: list[dict],
     ]
     if stage:
         lines.append(_stage_line(stage, jackpot))
-    lines.append("")
-    for p in predictions:
-        head = (f"Match {p['match_number']}: {p['home_team_raw']} vs "
+    ordered, ranks = _ranked(predictions)
+    mark_top = jackpot["number_of_events"] > TOP_N
+    lines += ["Sorted by confidence, strongest first."
+              + (f" ⭐ = top {TOP_N}." if mark_top else ""), ""]
+    for p in ordered:
+        rank = ranks.get(p["match_number"])
+        star = "⭐ " if mark_top and rank and rank <= TOP_N else ""
+        prefix = f"{star}#{rank} · " if rank else ""
+        head = (f"{prefix}Match {p['match_number']}: {p['home_team_raw']} vs "
                 f"{p['away_team_raw']}")
         league = f"{p['tournament']} ({p['country']})"
         lines.append(head)
@@ -148,6 +187,9 @@ def format_telegram(jackpot: dict, predictions: list[dict],
         lines.append("")
 
     tiers, picks, note = _summary(predictions)
+    top_block = _top_block(jackpot, predictions)
+    if top_block:
+        lines += ["─" * 28, *top_block, ""]
     lines += [
         "─" * 28,
         "SUMMARY",
@@ -178,8 +220,13 @@ def format_telegram(jackpot: dict, predictions: list[dict],
 def format_html(jackpot: dict, predictions: list[dict],
                 stage: str | None = None) -> str:
     tiers, picks, note = _summary(predictions)
+    top_block = _top_block(jackpot, predictions)
+    ordered, ranks = _ranked(predictions)
+    mark_top = jackpot["number_of_events"] > TOP_N
     rows = []
-    for p in predictions:
+    for p in ordered:
+        rank = ranks.get(p["match_number"])
+        is_top = mark_top and rank is not None and rank <= TOP_N
         if p.get("primary_pick"):
             pick = PICK_DISPLAY[p["primary_pick"]]
             probs = (f"{p['prob_home']:.0%} / {p['prob_draw']:.0%} / "
@@ -190,8 +237,11 @@ def format_html(jackpot: dict, predictions: list[dict],
             pick, probs, alt, tier = "—", "—", "—", "UNPRICED"
         color = _TIER_COLOR.get(tier, "#6e7781")
         insight = "<br>".join(l.strip() for l in _insight_lines(p)) or "—"
+        row_style = " style='background:#fff8c5'" if is_top else ""
         rows.append(
-            f"<tr><td>{p['match_number']}</td>"
+            f"<tr{row_style}>"
+            f"<td style='text-align:center'>{'⭐ ' if is_top else ''}"
+            f"{rank or '—'}</td><td>{p['match_number']}</td>"
             f"<td><b>{p['home_team_raw']}</b> vs <b>{p['away_team_raw']}</b><br>"
             f"<small>{p['tournament']} ({p['country']}) — {_eat(p['kickoff_utc'])}"
             f"</small></td>"
@@ -208,13 +258,15 @@ def format_html(jackpot: dict, predictions: list[dict],
 <p>Jackpot #{jackpot['human_id']} &nbsp;|&nbsp; first kickoff:
 {_eat(jackpot['first_kickoff_utc'])} &nbsp;|&nbsp; generated
 {_eat(datetime.now(timezone.utc).isoformat())}</p>
+<p>Sorted by confidence, strongest first{f"; ⭐ highlighted rows are the top {TOP_N}" if mark_top else ""}.</p>
 <table border="1" cellpadding="6" cellspacing="0"
        style="border-collapse:collapse;border-color:#d0d7de">
 <tr style="background:#f6f8fa">
-<th>#</th><th>Match</th><th>Pick</th><th>1 / X / 2</th><th>Alt</th>
+<th>Rank</th><th>#</th><th>Match</th><th>Pick</th><th>1 / X / 2</th><th>Alt</th>
 <th>Confidence</th><th>Source</th><th>Insight</th></tr>
 {''.join(rows)}
 </table>
+{("<p><b>" + "<br>".join(l.strip() for l in top_block) + "</b></p>") if top_block else ""}
 <p><b>Summary:</b> 🟢 {tiers.get('HIGH', 0)} high · 🟡 {tiers.get('MEDIUM', 0)} medium ·
 🟠 {tiers.get('LOW', 0)} low · 🔴 {tiers.get('UNCERTAIN', 0)} uncertain —
 picks 1×{picks.get('H', 0)}, X×{picks.get('D', 0)}, 2×{picks.get('A', 0)}</p>
@@ -235,7 +287,9 @@ def write_csv(jackpot: dict, predictions: list[dict], path) -> None:
                     "Forebet Pick", "Forebet 1", "Forebet X", "Forebet 2",
                     "Forebet Score", "Consensus", "Form Home", "Form Away",
                     "Pos Home", "Pos Away", "Votes 1", "Votes X", "Votes 2",
-                    "H2H (W-D-L)"])
+                    "H2H (W-D-L)", "Rank", f"Top {TOP_N}"])
+        _, ranks = _ranked(predictions)
+        mark_top = jackpot["number_of_events"] > TOP_N
         for p in predictions:
             has = p.get("primary_pick") is not None
             fb = p.get("forebet") or {}
@@ -267,6 +321,9 @@ def write_csv(jackpot: dict, predictions: list[dict], path) -> None:
                 f"{votes['away']:.2f}" if votes else "",
                 (f"{h2h['home_wins']}-{h2h['draws']}-{h2h['away_wins']}"
                  if h2h else ""),
+                ranks.get(p["match_number"], ""),
+                ("yes" if mark_top and ranks.get(p["match_number"], TOP_N + 1)
+                 <= TOP_N else ""),
             ])
 
 
