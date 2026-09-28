@@ -236,3 +236,31 @@ def test_formatter_sorts_by_confidence_and_marks_top_13():
     block = F._top_block({"number_of_events": 17}, preds)
     assert block[1].split()[0] == "5:1"  # matches 5..17, coupon order
     assert F._top_block({"number_of_events": 13}, preds[:13]) == []
+
+
+def test_at_least_matches_brute_force():
+    from itertools import product
+    from jackpot_predictor.predictor import formatter as F
+    qs = [0.9, 0.5, 0.3, 0.7]
+    for k in range(6):
+        brute = 0.0
+        for hits in product([0, 1], repeat=len(qs)):
+            if sum(hits) >= k:
+                pr = 1.0
+                for h, q in zip(hits, qs):
+                    pr *= q if h else 1 - q
+                brute += pr
+        assert abs(F._at_least(qs, k) - brute) < 1e-12
+
+
+def test_doubles_coupon_covers_the_least_sure_picks():
+    from jackpot_predictor.predictor import formatter as F
+    preds = [{"match_number": n, "primary_pick": "H", "primary_prob": 0.40 + n / 100,
+              "secondary_pick": "D", "secondary_prob": 0.30} for n in range(1, 18)]
+    block = F._doubles_block({"number_of_events": 17}, preds)
+    legs = block[1].split()
+    assert legs[:6] == ["1:1X", "2:1X", "3:1X", "4:1X", "5:1X", "6:1"]
+    assert "32 lines" in block[3]
+    # One unpriced fixture means no coupon rather than a partial one.
+    preds[3] = {"match_number": 4, "primary_pick": None}
+    assert F._doubles_block({"number_of_events": 17}, preds) == []

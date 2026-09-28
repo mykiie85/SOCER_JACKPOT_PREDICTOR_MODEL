@@ -140,6 +140,63 @@ def _top_block(jackpot: dict, predictions: list[dict]) -> list[str]:
     ]
 
 
+_DOUBLE_DISPLAY = {frozenset("HD"): "1X", frozenset("HA"): "12",
+                   frozenset("DA"): "X2"}
+
+
+def _at_least(qs: list[float], k: int) -> float:
+    """P(at least k of the independent events with probabilities qs happen)."""
+    dist = [1.0]
+    for q in qs:
+        dist = [a * (1 - q) + b * q for a, b in zip(dist + [0.0], [0.0] + dist)]
+    return sum(dist[k:])
+
+
+def _doubles_block(jackpot: dict, predictions: list[dict]) -> list[str]:
+    """The full-slate doubles coupon: top-2 outcomes on the least-sure matches.
+
+    Every priced fixture is played; the `coupon.doubles` lowest-probability
+    picks are covered with their top two outcomes (2**doubles lines). The
+    hit chances are for the best line, from the same probabilities as the
+    picks. Backtest #225-#236 (SportPesa odds, real prizes): 5 doubles staked
+    384k and won 244k — a lottery ticket, not an edge."""
+    cfg = jackpot_config().get("coupon") or {}
+    n_dbl = int(cfg.get("doubles") or 0)
+    n = jackpot["number_of_events"]
+    if not n_dbl or n <= TOP_N or len(predictions) != n:
+        return []
+    if not all(p.get("primary_pick") for p in predictions):
+        return []
+    least_sure = sorted(predictions,
+                        key=lambda p: (p["primary_prob"], p["match_number"]))
+    doubled = {p["match_number"] for p in least_sure[:n_dbl]}
+    legs, qs = [], []
+    for p in sorted(predictions, key=lambda p: p["match_number"]):
+        if p["match_number"] in doubled:
+            cover = _DOUBLE_DISPLAY[frozenset((p["primary_pick"],
+                                               p["secondary_pick"]))]
+            qs.append(p["primary_prob"] + p["secondary_prob"])
+        else:
+            cover = PICK_DISPLAY[p["primary_pick"]]
+            qs.append(p["primary_prob"])
+        legs.append(f"{p['match_number']}:{cover}")
+    n_lines = 2 ** n_dbl
+    price = int(cfg.get("stake_per_line_tzs") or 1000)
+    assumed = "" if cfg.get("stake_confirmed") else " (price per line assumed)"
+    lowest_tier = n - 5
+    p_low, p_13 = _at_least(qs, lowest_tier), _at_least(qs, TOP_N)
+    return [
+        f"🎟 {n_dbl}-DOUBLES COUPON for {n}/{n}, in coupon order:",
+        "  " + "  ".join(legs),
+        f"  Doubles on the {n_dbl} least-sure: "
+        + ", ".join(str(m) for m in sorted(doubled)),
+        f"  {n_lines} lines × {price:,} TZS = {n_lines * price:,} TZS{assumed}",
+        f"  Chance of {lowest_tier}+/{n}: {p_low:.0%} · "
+        f"{TOP_N}+/{n}: {p_13:.1%} (about 1 week in {round(1 / p_13):,})",
+        "  Lottery odds: expect to lose the stake most weeks.",
+    ]
+
+
 def _summary(predictions: list[dict]) -> tuple[Counter, Counter, str]:
     tiers = Counter(p["confidence_tier"] for p in predictions)
     picks = Counter(p["primary_pick"] for p in predictions if p.get("primary_pick"))
@@ -190,6 +247,9 @@ def format_telegram(jackpot: dict, predictions: list[dict],
     top_block = _top_block(jackpot, predictions)
     if top_block:
         lines += ["─" * 28, *top_block, ""]
+    doubles_block = _doubles_block(jackpot, predictions)
+    if doubles_block:
+        lines += ["─" * 28, *doubles_block, ""]
     lines += [
         "─" * 28,
         "SUMMARY",
@@ -221,6 +281,7 @@ def format_html(jackpot: dict, predictions: list[dict],
                 stage: str | None = None) -> str:
     tiers, picks, note = _summary(predictions)
     top_block = _top_block(jackpot, predictions)
+    doubles_block = _doubles_block(jackpot, predictions)
     ordered, ranks = _ranked(predictions)
     mark_top = jackpot["number_of_events"] > TOP_N
     rows = []
@@ -267,6 +328,7 @@ def format_html(jackpot: dict, predictions: list[dict],
 {''.join(rows)}
 </table>
 {("<p><b>" + "<br>".join(l.strip() for l in top_block) + "</b></p>") if top_block else ""}
+{("<p><b>" + "<br>".join(l.strip() for l in doubles_block) + "</b></p>") if doubles_block else ""}
 <p><b>Summary:</b> 🟢 {tiers.get('HIGH', 0)} high · 🟡 {tiers.get('MEDIUM', 0)} medium ·
 🟠 {tiers.get('LOW', 0)} low · 🔴 {tiers.get('UNCERTAIN', 0)} uncertain —
 picks 1×{picks.get('H', 0)}, X×{picks.get('D', 0)}, 2×{picks.get('A', 0)}</p>

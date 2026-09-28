@@ -113,6 +113,18 @@ schedule:
       days_before: 0
       send_hour_eat: 11
 
+# Doubles coupon for the full Supa slate (17/17 game, prizes from 12/17).
+# The `doubles` least-sure picks are covered with their top two outcomes;
+# 5 doubles = 32 lines. Backtest #225-#236 on SportPesa odds and real prizes:
+# ~2% a week to hit 13+/17, staked 384k, won 244k. 0 turns the block off.
+coupon:
+  doubles: 5
+  # SportPesa does not publish the per-line price in the jackpot API. Set it
+  # and flip stake_confirmed to true once known; until then the message says
+  # the price is assumed.
+  stake_per_line_tzs: 1000
+  stake_confirmed: false
+
 # Delivery
 delivery:
   telegram:
