@@ -119,11 +119,11 @@ schedule:
 # ~2% a week to hit 13+/17, staked 384k, won 244k. 0 turns the block off.
 coupon:
   doubles: 5
-  # SportPesa does not publish the per-line price in the jackpot API. Set it
-  # and flip stake_confirmed to true once known; until then the message says
-  # the price is assumed.
+  # SportPesa does not publish the per-line price in the jackpot API; 1,000
+  # TZS confirmed by the user 2026-09-28. With stake_confirmed false the
+  # message marks the price as assumed.
   stake_per_line_tzs: 1000
-  stake_confirmed: false
+  stake_confirmed: true
 
 # Delivery
 delivery:
