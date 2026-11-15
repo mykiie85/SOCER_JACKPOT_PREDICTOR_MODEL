@@ -133,18 +133,25 @@ def test_export_refreshes_only_when_data_changed():
         (src / "supa17_1_results.json").write_text("{}")
         target = Path(d) / "out" / "latest.tar.gz"
         target.parent.mkdir()
-        orig = (E.JACKPOTS_DIR, E.jackpot_config)
-        E.JACKPOTS_DIR = src
+        cfg = Path(d) / "jackpot.yaml"
+        cfg.write_text("lean_line: {}\n")
+        os.utime(cfg, (0, 0))
+        orig = (E.JACKPOTS_DIR, E.jackpot_config, E.CONFIG_PATH)
+        E.JACKPOTS_DIR, E.CONFIG_PATH = src, cfg
         E.jackpot_config = lambda: {"export": {"enabled": True,
                                                "path": str(target)}}
         try:
             assert E.refresh_export() == target
             with tarfile.open(target) as t:
                 assert "jackpots/supa17_1_results.json" in t.getnames()
+                assert "config/jackpot.yaml" in t.getnames()
             assert E.refresh_export() is None  # nothing changed
             later = target.stat().st_mtime + 10
             os.utime(src / "supa17_1_results.json", (later, later))
             assert E.refresh_export() == target
             assert not target.with_name(target.name + ".tmp").exists()
+            later = target.stat().st_mtime + 10
+            os.utime(cfg, (later, later))  # a config change also refreshes
+            assert E.refresh_export() == target
         finally:
-            E.JACKPOTS_DIR, E.jackpot_config = orig
+            E.JACKPOTS_DIR, E.jackpot_config, E.CONFIG_PATH = orig

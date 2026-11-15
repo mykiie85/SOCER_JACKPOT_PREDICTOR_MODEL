@@ -43,6 +43,8 @@ EMAIL_SENDER = os.getenv("EMAIL_SENDER", "")
 EMAIL_PASSWORD = os.getenv("EMAIL_PASSWORD", "")
 EMAIL_RECEIVER = os.getenv("EMAIL_RECEIVER", "") or EMAIL_SENDER
 
+CONFIG_PATH = Path(__file__).parent / "jackpot.yaml"
+
 _cfg_cache: dict | None = None
 
 
@@ -50,6 +52,6 @@ def jackpot_config() -> dict:
     """Load config/jackpot.yaml once."""
     global _cfg_cache
     if _cfg_cache is None:
-        with open(Path(__file__).parent / "jackpot.yaml", encoding="utf-8") as f:
+        with open(CONFIG_PATH, encoding="utf-8") as f:
             _cfg_cache = yaml.safe_load(f) or {}
     return _cfg_cache
