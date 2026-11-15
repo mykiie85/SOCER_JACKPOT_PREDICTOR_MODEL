@@ -13,6 +13,8 @@ so the starred list and the coupon can never disagree.
 """
 from __future__ import annotations
 
+from html import escape
+
 from jackpot_predictor.config.settings import jackpot_config
 from jackpot_predictor.predictor.confidence_tier import PICK_DISPLAY
 from jackpot_predictor.predictor.coupon13 import N_PICK, build_coupon
@@ -107,15 +109,15 @@ def coupon13_html(c: dict | None) -> str:
     if not c:
         return ""
     rows = "".join(
-        f"<tr><td>{g['match_number']}</td><td>{g['match']}</td>"
+        f"<tr><td>{g['match_number']}</td><td>{escape(g['match'])}</td>"
         f"<td style='text-align:center'>{g['base_pick']}</td>"
         f"<td style='text-align:center'>{'yes: ' + g['cover'] if g['double'] else 'no'}</td>"
-        f"<td>{g['reason']}</td><td><small>{g['note'] or '—'}</small></td>"
-        f"<td><small>{'; '.join(g['form_flags']) or '—'}</small></td></tr>"
+        f"<td>{escape(g['reason'])}</td><td><small>{escape(g['note']) or '—'}</small></td>"
+        f"<td><small>{escape('; '.join(g['form_flags'])) or '—'}</small></td></tr>"
         for g in c["legs"])
     head = coupon13_lines(c)
-    return (f"<h3>{head[0]}</h3><p><b>{head[1].strip()}</b><br>"
-            + "<br>".join(l.strip() for l in head[2:]) + "</p>"
+    return (f"<h3>{escape(head[0])}</h3><p><b>{escape(head[1].strip())}</b><br>"
+            + "<br>".join(escape(l.strip()) for l in head[2:]) + "</p>"
             "<table border='1' cellpadding='5' cellspacing='0' "
             "style='border-collapse:collapse;border-color:#d0d7de'>"
             "<tr style='background:#f6f8fa'><th>#</th><th>Match</th>"

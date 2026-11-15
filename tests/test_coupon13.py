@@ -122,6 +122,10 @@ def test_message_block_uses_margin_free_odds_and_the_starred_13():
     text = "\n".join(F.coupon13_lines(c))
     assert "5:1X" in text and "8 lines" in text and "odds-based" in text
     assert "<table" in F.coupon13_html(c)
+    # Team names come from SportPesa's feed: they must not reach the email raw.
+    preds[4]["home_team_raw"] = "<script>x</script>"
+    html = F.coupon13_html(F._coupon13(jackpot, preds))
+    assert "<script>" not in html and "&lt;script&gt;" in html
     # One unpriced match is simply left out of the 13.
     preds[16] = {"match_number": 17, "primary_pick": None}
     assert [g["match_number"] for g in F._coupon13(jackpot, preds)["legs"]] \
