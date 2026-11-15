@@ -96,6 +96,41 @@ python main.py --force      # send now regardless of schedule
 python main.py --no-cache   # refetch the fixture feed
 ```
 
+## 13/13 coupon
+
+In the 13/13 game the player plays 13 of the 17 matches and is paid from
+10/13. The message carries a coupon for it, built by
+`jackpot_predictor/predictor/coupon13.py`:
+
+1. Every pick is the favourite from margin-free odds.
+2. The 13 strongest favourites are played; the other 4 are left out.
+3. Up to 3 close matches get a double (top two outcomes), so at most 8 lines.
+   A match is close when the favourite is at most 45%, the second outcome at
+   least 28%, and the two together at least 70%.
+
+Settings are under `coupon13:` in `config/jackpot.yaml` (`doubles: 0` sends
+the single favourite line only).
+
+Walk-forward backtest on rounds #34 to #243 (needs the analysis CSVs, which
+are not in this repo):
+
+    python3 scripts/backtest_coupon13.py \
+        --matches "<analysis folder>/jackpot_matches_with_odds.csv" \
+        --prizes  "<analysis folder>/jackpot_prizes.csv"
+
+| Strategy | 10+/13 rounds of 202 | Staked (TZS) | Returned (TZS) | Per 1,000 |
+|---|---|---|---|---|
+| All favourites, one line | 2 | 202,000 | 342,112 | 1,694 |
+| Favourites + team form | 2 | 202,000 | 342,112 | 1,694 |
+| Favourites + 3 doubles | 6 | 1,511,000 | 722,597 | 478 |
+| Doubles + team form | 6 | 1,511,000 | 722,597 | 478 |
+
+Reading it: doubles triple the chance of a prize and cost about 7.5 times
+more. One 304,252 TZS prize (round #94) is 89% of the single line's return,
+so 1,694 is luck, not an edge. A team-form rule (a team's record in earlier
+jackpot rounds overriding the favourite) was tested and removed: 16
+deviations, 5 right, where the favourites they replaced were right 8 times.
+
 ## Results grading
 
 After the matches play, `results_main.py` grades the archived predictions
