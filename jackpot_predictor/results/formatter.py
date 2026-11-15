@@ -53,7 +53,17 @@ def _tier_breakdown(rows: list[dict]) -> str:
     return " · ".join(bits) if bits else "—"
 
 
-def format_telegram(graded: dict, jackpot: dict, source: str) -> str:
+def _lines_summary(line_grades: dict | None) -> str:
+    """One line: favourite line vs lean line, correct out of played."""
+    if not line_grades:
+        return ""
+    fav, lean = line_grades["favourite_line"], line_grades["lean_line"]
+    return (f"Favourite line {fav['correct']}/{fav['played']} · "
+            f"lean line {lean['correct']}/{lean['played']} (logged only)")
+
+
+def format_telegram(graded: dict, jackpot: dict, source: str,
+                    line_grades: dict | None = None) -> str:
     rows = graded["rows"]
     head = [
         f"🏁 SportPesa {_title(jackpot)} #{jackpot['human_id']} — Results",
@@ -75,6 +85,8 @@ def format_telegram(graded: dict, jackpot: dict, source: str) -> str:
         "─" * 30,
         f"By confidence (correct/played): {_tier_breakdown(rows)}",
     ]
+    if line_grades:
+        foot.append(_lines_summary(line_grades))
     if graded["pending"]:
         foot.append("Some matches are not settled yet — they roll into the next "
                     "results check.")
@@ -82,7 +94,8 @@ def format_telegram(graded: dict, jackpot: dict, source: str) -> str:
     return "\n".join(head + body + foot)
 
 
-def format_html(graded: dict, jackpot: dict, source: str) -> str:
+def format_html(graded: dict, jackpot: dict, source: str,
+                line_grades: dict | None = None) -> str:
     trs = []
     for r in graded["rows"]:
         mark = _MARK[r["is_correct"]] if r["result_status"] != "pending" else "⏳"
@@ -111,6 +124,7 @@ def format_html(graded: dict, jackpot: dict, source: str) -> str:
 {''.join(trs)}
 </table>
 <p><b>By confidence (correct/played):</b> {_tier_breakdown(graded['rows'])}</p>
+{f"<p><b>{_lines_summary(line_grades)}</b></p>" if line_grades else ""}
 <p style="color:#6e7781"><small>⚠️ Research only. Void matches (no score
 published) sit outside the correct count. Results are SportPesa's own settled
 outcomes.</small></p>

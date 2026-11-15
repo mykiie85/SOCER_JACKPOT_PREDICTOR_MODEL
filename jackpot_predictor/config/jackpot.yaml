@@ -125,6 +125,30 @@ coupon:
   stake_per_line_tzs: 1000
   stake_confirmed: true
 
+# Lean-against-the-crowd line — LOGGING ONLY. Shown in the message after the
+# favourite line, saved on the round's JSON (favourite_line / lean_line) and
+# graded per round into <type>_<round>_line_grades.json. It never changes the
+# picks, the coupon, the stake or the number of lines.
+#   per match: score(o) = ln p(o) - strength * ln crowd_share(o); highest wins.
+#   p is the price the favourite line uses, margin removed, NOT sharpened by
+#   odds_calibration.temperature. No odds -> home win on both lines.
+#   crowd_share: share of public tickets holding the favourite, the draw when
+#   it is not the favourite, and the underdog (other non-favourite side).
+# Fitted on past rounds on another machine; refit before trusting.
+lean_line:
+  enabled: false
+  strength: 0.5
+  crowd_share:
+    favourite: 0.54
+    draw: 0.23
+    underdog: 0.30
+
+# After each grade, results_main.py refreshes one tarball of data/jackpots/
+# (only when something in it changed). Copy it off with scp.
+export:
+  enabled: true
+  path: /home/edgebot/jackpots_export_latest.tar.gz
+
 # Delivery
 delivery:
   telegram:

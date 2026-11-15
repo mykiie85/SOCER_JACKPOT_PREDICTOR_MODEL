@@ -37,7 +37,8 @@ _OUTCOME_FROM_PUBLIC = {"Home": "H", "Draw": "D", "Away": "A"}
 def latest_prediction_archive() -> dict | None:
     """Newest ``save_outputs`` JSON archive (``{jackpot, predictions}``)."""
     files = sorted((p for p in JACKPOTS_DIR.glob("*.json")
-                    if not p.name.endswith("_results.json")),
+                    if not p.name.endswith(("_results.json",
+                                            "_line_grades.json"))),
                    key=lambda p: p.stat().st_mtime, reverse=True)
     for f in files:
         try:
@@ -139,6 +140,46 @@ def grade(archive: dict, results: dict) -> dict:
                      "is_correct": is_correct})
     return {"rows": rows, "correct": correct, "played": played, "void": void,
             "pending": pending, "total": len(archive["predictions"])}
+
+
+# ──────────────────────────────────────────── favourite vs lean line grades
+def grade_lines(archive: dict, results: dict) -> dict | None:
+    """Grade the archived favourite and lean lines exactly as ``grade`` grades
+    the published picks. None for archives saved without the lines."""
+    from jackpot_predictor.predictor.lean_line import LINE_FIELDS
+    if not all(isinstance(archive.get(f), list) for f in LINE_FIELDS):
+        return None
+    preds = sorted(archive["predictions"], key=lambda p: p["match_number"])
+    out = {}
+    for field in LINE_FIELDS:
+        g = grade({"predictions": [{**p, "primary_pick": pick}
+                                   for p, pick in zip(preds, archive[field])]},
+                  results)
+        out[field] = {"picks": archive[field],
+                      "hits": [r["is_correct"] for r in g["rows"]],
+                      **{k: g[k] for k in ("correct", "played", "void",
+                                           "pending", "total")}}
+    return out
+
+
+def line_grades_path(jackpot: dict) -> Path:
+    return JACKPOTS_DIR / (f"{jackpot['jackpot_type']}_{jackpot['human_id']}"
+                           "_line_grades.json")
+
+
+def save_line_grades(archive: dict, line_grades: dict) -> Path:
+    """Write (or refresh, as more matches settle) the round's line grades."""
+    jackpot = archive["jackpot"]
+    path = line_grades_path(jackpot)
+    path.write_text(json.dumps({
+        "jackpot_id": jackpot.get("jackpot_id"),
+        "human_id": jackpot.get("human_id"),
+        "archive": Path(archive.get("_archive_path", "")).name,
+        "graded_at": datetime.now(timezone.utc).isoformat(),
+        "lean_line_settings": archive.get("lean_line_settings"),
+        **line_grades,
+    }, indent=2, default=str), encoding="utf-8")
+    return path
 
 
 # ────────────────────────────────────────────────── production-vs-market log

@@ -83,9 +83,36 @@ def main(dry_run: bool = False, force: bool = False) -> int:
     except Exception as e:  # noqa: BLE001 - measurement must never block a recap
         log.warning("production log failed: %s", e)
 
+    # Favourite vs lean-against-the-crowd line (config lean_line.enabled):
+    # both graded like the published picks and stored per round.
+    from jackpot_predictor.predictor.lean_line import enabled as lean_enabled
+    line_grades = None
+    if lean_enabled():
+        try:
+            from jackpot_predictor.results.grader import (grade_lines,
+                                                          save_line_grades)
+            line_grades = grade_lines(archive, results)
+            if line_grades:
+                path = save_line_grades(archive, line_grades)
+                log.info("line grades: favourite %d/%d, lean %d/%d (%s)",
+                         line_grades["favourite_line"]["correct"],
+                         line_grades["favourite_line"]["played"],
+                         line_grades["lean_line"]["correct"],
+                         line_grades["lean_line"]["played"], path.name)
+        except Exception as e:  # noqa: BLE001 - logging must never block a recap
+            log.warning("line grading failed: %s", e)
+            line_grades = None
+
+    # Copy of data/jackpots/ for the user's PC, refreshed after each grade.
+    from jackpot_predictor.results.export import refresh_export
+    try:
+        refresh_export()
+    except Exception as e:  # noqa: BLE001
+        log.warning("export refresh failed: %s", e)
+
     from jackpot_predictor.results.formatter import format_html, format_telegram
-    telegram_text = format_telegram(graded, jackpot, source)
-    html_body = format_html(graded, jackpot, source)
+    telegram_text = format_telegram(graded, jackpot, source, line_grades)
+    html_body = format_html(graded, jackpot, source, line_grades)
 
     # Report a jackpot once it is fully settled; re-report only when new matches
     # have settled since last time (key includes the played count).

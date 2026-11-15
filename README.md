@@ -118,6 +118,23 @@ without a score (postponed/void, exposed via `publicDraw`) sit outside the
 correct/played count. A `deploy/jackpot-results.timer` fires at 08:00 and 20:30
 EAT; the run is idempotent via `data/cache/results_sent.json`.
 
+## Lean-against-the-crowd line (logging only)
+
+Off by default (`lean_line.enabled` in `jackpot.yaml`). When on, the message
+shows the favourite line and a second line that leans towards outcomes the
+public under-picks, per match `ln p - strength * ln crowd_share`, where p is the
+de-vigged price without the temperature sharpening. Matches where the lines
+differ are marked `*`. The round JSON gains `favourite_line`, `lean_line` and
+`lean_line_settings`; the grader writes both scores to
+`data/jackpots/<type>_<round>_line_grades.json` and adds one line to the recap.
+It never changes the picks, the coupon, the stake or the number of lines.
+
+## Export for another machine
+
+After each grade, `results_main.py` refreshes one tarball of `data/jackpots/`
+at `export.path` (default `/home/edgebot/jackpots_export_latest.tar.gz`), only
+when something in the folder changed. Copy it with `scp`.
+
 ## Tests
 
 ```bash

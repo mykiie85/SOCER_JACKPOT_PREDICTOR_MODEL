@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
 from jackpot_predictor.config.settings import JACKPOTS_DIR, jackpot_config
+from jackpot_predictor.predictor import lean_line
 from jackpot_predictor.predictor.confidence_tier import PICK_DISPLAY, PICK_LABEL
 
 log = logging.getLogger(__name__)
@@ -140,6 +141,24 @@ def _top_block(jackpot: dict, predictions: list[dict]) -> list[str]:
     ]
 
 
+def _lines_block(lines: dict | None) -> list[str]:
+    """The favourite line and the lean-against-the-crowd line, in coupon
+    order; * marks the matches where the lean line differs. Logging only."""
+    if not lines:
+        return []
+    fav, lean = lines["favourite_line"], lines["lean_line"]
+    diff = [f != l for f, l in zip(fav, lean)]
+    return [
+        f"📋 FAVOURITE LINE ({len(fav)}/{len(fav)}), in coupon order:",
+        "  " + "  ".join(f"{i}:{PICK_DISPLAY[f]}" for i, f in enumerate(fav, 1)),
+        "📋 LEAN LINE (against the crowd), in coupon order:",
+        "  " + "  ".join(f"{i}:{PICK_DISPLAY[l]}{'*' if d else ''}"
+                         for i, (l, d) in enumerate(zip(lean, diff), 1)),
+        f"  * = differs from the favourite line ({sum(diff)} of {len(fav)}). "
+        "Logged for testing only — not a recommendation to play.",
+    ]
+
+
 _DOUBLE_DISPLAY = {frozenset("HD"): "1X", frozenset("HA"): "12",
                    frozenset("DA"): "X2"}
 
@@ -209,7 +228,8 @@ def _summary(predictions: list[dict]) -> tuple[Counter, Counter, str]:
 
 
 def format_telegram(jackpot: dict, predictions: list[dict],
-                    stage: str | None = None) -> str:
+                    stage: str | None = None,
+                    lean_lines: dict | None = None) -> str:
     lines = [
         f"🎯 SportPesa {_title(jackpot)} — Predictions",
         f"Jackpot #{jackpot['human_id']} | first kickoff: "
@@ -247,6 +267,9 @@ def format_telegram(jackpot: dict, predictions: list[dict],
     top_block = _top_block(jackpot, predictions)
     if top_block:
         lines += ["─" * 28, *top_block, ""]
+    lean_block = _lines_block(lean_lines)
+    if lean_block:
+        lines += ["─" * 28, *lean_block, ""]
     doubles_block = _doubles_block(jackpot, predictions)
     if doubles_block:
         lines += ["─" * 28, *doubles_block, ""]
@@ -278,9 +301,11 @@ def format_telegram(jackpot: dict, predictions: list[dict],
 
 
 def format_html(jackpot: dict, predictions: list[dict],
-                stage: str | None = None) -> str:
+                stage: str | None = None,
+                lean_lines: dict | None = None) -> str:
     tiers, picks, note = _summary(predictions)
     top_block = _top_block(jackpot, predictions)
+    lean_block = _lines_block(lean_lines)
     doubles_block = _doubles_block(jackpot, predictions)
     ordered, ranks = _ranked(predictions)
     mark_top = jackpot["number_of_events"] > TOP_N
@@ -327,7 +352,8 @@ def format_html(jackpot: dict, predictions: list[dict],
 <th>Confidence</th><th>Source</th><th>Insight</th></tr>
 {''.join(rows)}
 </table>
-{("<p><b>" + "<br>".join(l.strip() for l in top_block) + "</b></p>") if top_block else ""}
+{("<p><b>" + "<br>".join(l.strip() for l in top_block) + "</b></p>") if top_block else ""}\
+{("<p>" + "<br>".join(l.strip() for l in lean_block) + "</p>") if lean_block else ""}
 {("<p><b>" + "<br>".join(l.strip() for l in doubles_block) + "</b></p>") if doubles_block else ""}
 <p><b>Summary:</b> 🟢 {tiers.get('HIGH', 0)} high · 🟡 {tiers.get('MEDIUM', 0)} medium ·
 🟠 {tiers.get('LOW', 0)} low · 🔴 {tiers.get('UNCERTAIN', 0)} uncertain —
@@ -397,16 +423,20 @@ def save_outputs(jackpot: dict, predictions: list[dict],
     if stage:
         base = base.with_name(f"{base.name}_{stage}")
     jackpot = {**jackpot, "stage": stage}
+    # Lean-against-the-crowd line (config lean_line.enabled): logged beside
+    # the favourite line, never played.
+    lines = lean_line.build_lines(predictions) if lean_line.enabled() else {}
 
-    telegram_text = format_telegram(jackpot, predictions, stage=stage)
-    html_body = format_html(jackpot, predictions, stage=stage)
+    telegram_text = format_telegram(jackpot, predictions, stage=stage,
+                                    lean_lines=lines)
+    html_body = format_html(jackpot, predictions, stage=stage, lean_lines=lines)
 
     (base.with_suffix(".txt")).write_text(telegram_text, encoding="utf-8")
     (base.with_suffix(".html")).write_text(html_body, encoding="utf-8")
     csv_path = base.with_suffix(".csv")
     write_csv(jackpot, predictions, csv_path)
     (base.with_suffix(".json")).write_text(
-        json.dumps({"jackpot": jackpot, "predictions": predictions},
+        json.dumps({"jackpot": jackpot, "predictions": predictions, **lines},
                    indent=2, default=str), encoding="utf-8")
     log.info("outputs archived at %s.*", base)
     return {"telegram_text": telegram_text, "html_body": html_body,
