@@ -125,6 +125,29 @@ coupon:
   stake_per_line_tzs: 1000
   stake_confirmed: true
 
+# Coupon for the 13/13 game (the player plays 13 of the 17 matches; prizes
+# from 10/13). Built by predictor/coupon13.py on the starred top 13:
+#   - every pick is the favourite from margin-free odds;
+#   - up to `doubles` close matches get their top two outcomes (2**doubles
+#     lines). A match is close when favourite <= fav_max, second outcome >=
+#     second_min, the two together >= top2_min, nothing above no_double_above.
+# Walk-forward backtest, scripts/backtest_coupon13.py, rounds #34-#243:
+#   single favourite line   10+/13 in 2 of 202 rounds, returned 1,694 per
+#                           1,000 staked (one 304k prize is 89% of that)
+#   3 doubles               10+/13 in 6 of 202 rounds, returned 478 per 1,000
+#   team-form deviations    16 played, 5 right; the favourites they replaced
+#                           were right 8 times. REMOVED, not shipped.
+# So doubles raise the chance of a prize about 3x for about 7.5x the cost.
+# They are not an edge. doubles: 0 sends the single favourite line only.
+coupon13:
+  enabled: true
+  doubles: 3
+  fav_max: 0.45
+  second_min: 0.28
+  top2_min: 0.70
+  no_double_above: 0.55
+  backtest_note: "Backtest, 202 rounds: 10+ in 6 rounds with 3 doubles, in 2 with one line. Doubles cost about 7.5x more and returned less per shilling. A better chance, not a profit."
+
 # Delivery
 delivery:
   telegram:

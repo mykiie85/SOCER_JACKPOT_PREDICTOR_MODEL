@@ -11,6 +11,8 @@ from zoneinfo import ZoneInfo
 
 from jackpot_predictor.config.settings import JACKPOTS_DIR, jackpot_config
 from jackpot_predictor.predictor.confidence_tier import PICK_DISPLAY, PICK_LABEL
+from jackpot_predictor.predictor.coupon13_format import (coupon13, coupon13_html,
+                                                         coupon13_lines)
 
 log = logging.getLogger(__name__)
 
@@ -121,6 +123,13 @@ def _ranked(predictions: list[dict]) -> tuple[list[dict], dict[int, int]]:
     unpriced = [p for p in predictions if not p.get("primary_pick")]
     ranks = {p["match_number"]: i for i, p in enumerate(priced, 1)}
     return priced + unpriced, ranks
+
+
+def _coupon13(jackpot: dict, predictions: list[dict]) -> dict | None:
+    """The 13/13 doubles coupon on the starred top 13 (see coupon13_format)."""
+    ordered, _ = _ranked(predictions)
+    top = [p for p in ordered[:TOP_N] if p.get("primary_pick")]
+    return coupon13(jackpot, top)
 
 
 def _top_block(jackpot: dict, predictions: list[dict]) -> list[str]:
@@ -247,6 +256,9 @@ def format_telegram(jackpot: dict, predictions: list[dict],
     top_block = _top_block(jackpot, predictions)
     if top_block:
         lines += ["─" * 28, *top_block, ""]
+    c13_block = coupon13_lines(_coupon13(jackpot, predictions))
+    if c13_block:
+        lines += ["─" * 28, *c13_block, ""]
     doubles_block = _doubles_block(jackpot, predictions)
     if doubles_block:
         lines += ["─" * 28, *doubles_block, ""]
@@ -328,6 +340,7 @@ def format_html(jackpot: dict, predictions: list[dict],
 {''.join(rows)}
 </table>
 {("<p><b>" + "<br>".join(l.strip() for l in top_block) + "</b></p>") if top_block else ""}
+{coupon13_html(_coupon13(jackpot, predictions))}
 {("<p><b>" + "<br>".join(l.strip() for l in doubles_block) + "</b></p>") if doubles_block else ""}
 <p><b>Summary:</b> 🟢 {tiers.get('HIGH', 0)} high · 🟡 {tiers.get('MEDIUM', 0)} medium ·
 🟠 {tiers.get('LOW', 0)} low · 🔴 {tiers.get('UNCERTAIN', 0)} uncertain —
@@ -406,7 +419,8 @@ def save_outputs(jackpot: dict, predictions: list[dict],
     csv_path = base.with_suffix(".csv")
     write_csv(jackpot, predictions, csv_path)
     (base.with_suffix(".json")).write_text(
-        json.dumps({"jackpot": jackpot, "predictions": predictions},
+        json.dumps({"jackpot": jackpot, "predictions": predictions,
+                    "coupon13": _coupon13(jackpot, predictions)},
                    indent=2, default=str), encoding="utf-8")
     log.info("outputs archived at %s.*", base)
     return {"telegram_text": telegram_text, "html_body": html_body,
