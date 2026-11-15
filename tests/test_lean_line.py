@@ -50,14 +50,18 @@ def test_line_probs_prefer_the_sharp_price():
     assert max(L.line_probs(row), key=L.line_probs(row).get) == "A"
 
 
-def test_lines_block_marks_the_differences():
+def test_lines_block_shows_both_lines_side_by_side():
     from jackpot_predictor.predictor import formatter as F
-    block = F._lines_block({"favourite_line": ["H", "A", "H"],
-                            "lean_line": ["H", "D", "A"]})
-    assert block[1].split() == ["1:1", "2:2", "3:1"]
-    assert block[3].split() == ["1:1", "2:X*", "3:2*"]
-    assert "(2 of 3)" in block[4]
-    assert F._lines_block({}) == []
+    lines = {"favourite_line": ["H", "A", "H"], "lean_line": ["H", "D", "A"]}
+    block = F._lines_block(lines)
+    assert "Favourite line" in block[1] and "Lean line" in block[1]
+    assert [r.split() for r in block[2:5]] == [["1:", "1", "|", "1"],
+                                               ["2:", "2", "|", "X", "*"],
+                                               ["3:", "1", "|", "2", "*"]]
+    assert "(2 of 3)" in block[5]
+    html = F._lines_table_html(lines)
+    assert "<th>Favourite line</th>" in html and "<th>Lean line</th>" in html
+    assert F._lines_block({}) == [] and F._lines_table_html({}) == ""
 
 
 def test_grade_lines_grades_each_line_like_the_picks():
@@ -83,9 +87,38 @@ def test_grade_lines_skips_archives_without_lines():
     assert grade_lines({"predictions": [{"match_number": 1}]}, {}) is None
 
 
-def test_feature_is_off_by_default():
-    from jackpot_predictor.config.settings import jackpot_config
-    assert jackpot_config()["lean_line"]["enabled"] is False
+def test_config_carries_strength_and_shares():
+    cfg = L.settings()
+    assert 0 < cfg["strength"] <= 1
+    assert set(cfg["crowd_share"]) == {"favourite", "draw", "underdog"}
+
+
+def test_production_log_records_both_lines():
+    import json
+    import tempfile
+    from pathlib import Path
+    from jackpot_predictor.results import grader as G
+    preds = [{"match_number": n, "event_id": f"e{n}", "primary_pick": "H",
+              "source": "odds", "odds_home": 2.0, "odds_draw": 3.4,
+              "odds_away": 3.8} for n in (1, 2)]
+    archive = {"jackpot": {"human_id": 999, "jackpot_id": "x"},
+               "predictions": preds, "favourite_line": ["H", "H"],
+               "lean_line": ["A", "H"],
+               "lean_line_settings": {"strength": 0.3}}
+    results = {"e1": {"outcome": "A", "score": (0, 1), "status": "played"},
+               "e2": {"outcome": "D", "score": (1, 1), "status": "played"}}
+    orig = G.PRODUCTION_LOG
+    with tempfile.TemporaryDirectory() as d:
+        G.PRODUCTION_LOG = Path(d) / "log.jsonl"
+        try:
+            G.log_production_results(archive, G.grade(archive, results))
+            rows = [json.loads(l) for l in G.PRODUCTION_LOG.read_text().splitlines()]
+        finally:
+            G.PRODUCTION_LOG = orig
+    assert [(r["favourite_line_pick"], r["favourite_line_correct"],
+             r["lean_line_pick"], r["lean_line_correct"]) for r in rows] == \
+        [("H", False, "A", True), ("H", False, "H", False)]
+    assert rows[0]["lean_line_strength"] == 0.3
 
 
 def test_export_refreshes_only_when_data_changed():

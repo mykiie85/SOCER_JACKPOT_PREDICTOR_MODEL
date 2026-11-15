@@ -120,11 +120,12 @@ EAT; the run is idempotent via `data/cache/results_sent.json`.
 
 ## Lean-against-the-crowd line (logging only)
 
-Off by default (`lean_line.enabled` in `jackpot.yaml`). When on, the message
-shows the favourite line and a second line that leans towards outcomes the
+On since 2026-11-15 at strength 0.30 (`lean_line` in `jackpot.yaml`). The message
+shows the Favourite line and the Lean line side by side: a second line that leans towards outcomes the
 public under-picks, per match `ln p - strength * ln crowd_share`, where p is the
 de-vigged price without the temperature sharpening. Matches where the lines
-differ are marked `*`. The round JSON gains `favourite_line`, `lean_line` and
+differ are marked `*`. Every production-log row records both lines' picks
+and hits (`favourite_line_*`, `lean_line_*`). The round JSON gains `favourite_line`, `lean_line` and
 `lean_line_settings`; the grader writes both scores to
 `data/jackpots/<type>_<round>_line_grades.json` and adds one line to the recap.
 It never changes the picks, the coupon, the stake or the number of lines.

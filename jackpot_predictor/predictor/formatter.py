@@ -141,22 +141,48 @@ def _top_block(jackpot: dict, predictions: list[dict]) -> list[str]:
     ]
 
 
-def _lines_block(lines: dict | None) -> list[str]:
-    """The favourite line and the lean-against-the-crowd line, in coupon
-    order; * marks the matches where the lean line differs. Logging only."""
+def _line_rows(lines: dict | None) -> list[tuple[int, str, str, bool]]:
+    """(match, favourite, lean, differs) per match, in coupon order."""
     if not lines:
         return []
-    fav, lean = lines["favourite_line"], lines["lean_line"]
-    diff = [f != l for f, l in zip(fav, lean)]
-    return [
-        f"📋 FAVOURITE LINE ({len(fav)}/{len(fav)}), in coupon order:",
-        "  " + "  ".join(f"{i}:{PICK_DISPLAY[f]}" for i, f in enumerate(fav, 1)),
-        "📋 LEAN LINE (against the crowd), in coupon order:",
-        "  " + "  ".join(f"{i}:{PICK_DISPLAY[l]}{'*' if d else ''}"
-                         for i, (l, d) in enumerate(zip(lean, diff), 1)),
-        f"  * = differs from the favourite line ({sum(diff)} of {len(fav)}). "
-        "Logged for testing only — not a recommendation to play.",
-    ]
+    return [(i, PICK_DISPLAY[f], PICK_DISPLAY[l], f != l) for i, (f, l)
+            in enumerate(zip(lines["favourite_line"], lines["lean_line"]), 1)]
+
+
+def _lines_footer(rows: list) -> str:
+    return (f"* = Lean line differs from Favourite line "
+            f"({sum(r[3] for r in rows)} of {len(rows)}). The Lean line is "
+            "logged for testing only — not a recommendation to play.")
+
+
+def _lines_block(lines: dict | None) -> list[str]:
+    """Favourite line and Lean line side by side, one match per row."""
+    rows = _line_rows(lines)
+    if not rows:
+        return []
+    return ["📋 Favourite line vs Lean line, in coupon order",
+            "Match: Favourite line | Lean line",
+            *(f"  {m:>2}:  {f}  |  {l}{' *' if d else ''}" for m, f, l, d in rows),
+            _lines_footer(rows)]
+
+
+def _lines_table_html(lines: dict | None) -> str:
+    rows = _line_rows(lines)
+    if not rows:
+        return ""
+    hl = " style='background:#fff8c5'"
+    trs = "".join(
+        f"<tr{hl if d else ''}>"
+        f"<td style='text-align:center'>{m}</td>"
+        f"<td style='text-align:center'><b>{f}</b></td>"
+        f"<td style='text-align:center'><b>{l}</b>{' *' if d else ''}</td></tr>"
+        for m, f, l, d in rows)
+    return ("<h3>📋 Favourite line vs Lean line</h3>"
+            "<table border='1' cellpadding='4' cellspacing='0' "
+            "style='border-collapse:collapse;border-color:#d0d7de'>"
+            "<tr style='background:#f6f8fa'><th>Match</th><th>Favourite line</th>"
+            f"<th>Lean line</th></tr>{trs}</table>"
+            f"<p><small>{_lines_footer(rows)}</small></p>")
 
 
 _DOUBLE_DISPLAY = {frozenset("HD"): "1X", frozenset("HA"): "12",
@@ -305,7 +331,7 @@ def format_html(jackpot: dict, predictions: list[dict],
                 lean_lines: dict | None = None) -> str:
     tiers, picks, note = _summary(predictions)
     top_block = _top_block(jackpot, predictions)
-    lean_block = _lines_block(lean_lines)
+    lean_table = _lines_table_html(lean_lines)
     doubles_block = _doubles_block(jackpot, predictions)
     ordered, ranks = _ranked(predictions)
     mark_top = jackpot["number_of_events"] > TOP_N
@@ -352,8 +378,7 @@ def format_html(jackpot: dict, predictions: list[dict],
 <th>Confidence</th><th>Source</th><th>Insight</th></tr>
 {''.join(rows)}
 </table>
-{("<p><b>" + "<br>".join(l.strip() for l in top_block) + "</b></p>") if top_block else ""}\
-{("<p>" + "<br>".join(l.strip() for l in lean_block) + "</p>") if lean_block else ""}
+{("<p><b>" + "<br>".join(l.strip() for l in top_block) + "</b></p>") if top_block else ""}{lean_table}
 {("<p><b>" + "<br>".join(l.strip() for l in doubles_block) + "</b></p>") if doubles_block else ""}
 <p><b>Summary:</b> 🟢 {tiers.get('HIGH', 0)} high · 🟡 {tiers.get('MEDIUM', 0)} medium ·
 🟠 {tiers.get('LOW', 0)} low · 🔴 {tiers.get('UNCERTAIN', 0)} uncertain —

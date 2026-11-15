@@ -135,9 +135,14 @@ coupon:
 #   crowd_share: share of public tickets holding the favourite, the draw when
 #   it is not the favourite, and the underdog (other non-favourite side).
 # Fitted on past rounds on another machine; refit before trusting.
+# strength 0.30 (2026-11-15): of 0.10/0.15/0.20/0.25/0.30/0.40/0.50 the one
+# whose moves off the favourite on #225-#243 (SportPesa odds, margin removed)
+# came closest to the source backtest's ~10 of 17: 10.2 (0.25 -> 8.8,
+# 0.40 -> 13.2). The mix differs from that backtest: ~1.6 draws + 8.6
+# underdogs here vs ~6 + ~4 there.
 lean_line:
-  enabled: false
-  strength: 0.5
+  enabled: true
+  strength: 0.30
   crowd_share:
     favourite: 0.54
     draw: 0.23

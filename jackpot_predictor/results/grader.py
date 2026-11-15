@@ -277,6 +277,27 @@ def _existing_keys() -> set:
     return keys
 
 
+def archive_lines(archive: dict) -> dict | None:
+    """{match_number: (favourite, lean)} plus the strength used, for an archive.
+
+    Archives saved with the lean line carry both lines; older ones get them
+    rebuilt from their own predictions with the current config, so a
+    re-grade of past rounds still logs both. None when the feature is off and
+    the archive has no lines."""
+    from jackpot_predictor.predictor import lean_line
+    if all(isinstance(archive.get(f), list) for f in lean_line.LINE_FIELDS):
+        lines = archive
+        settings = archive.get("lean_line_settings") or {}
+    elif lean_line.enabled():
+        lines = lean_line.build_lines(archive["predictions"])
+        settings = lines["lean_line_settings"]
+    else:
+        return None
+    return {"picks": {i: (f, l) for i, (f, l) in enumerate(
+                zip(lines["favourite_line"], lines["lean_line"]), 1)},
+            "strength": settings.get("strength")}
+
+
 def log_production_results(archive: dict, graded: dict) -> dict:
     """Append one model-vs-market row per newly settled fixture.
 
@@ -287,9 +308,10 @@ def log_production_results(archive: dict, graded: dict) -> dict:
     jackpot = archive["jackpot"]
     jackpot_id = str(jackpot.get("human_id") or jackpot.get("jackpot_id"))
     seen = _existing_keys()
+    lines = archive_lines(archive)
     graded_at = datetime.now(timezone.utc).isoformat()
     written = skipped = 0
-    lines = []
+    out_lines = []
     for row in graded["rows"]:
         actual = row.get("actual_outcome")
         if row.get("result_status") != "played" or actual not in _OUTCOME_INDEX:
@@ -332,13 +354,20 @@ def log_production_results(archive: dict, graded: dict) -> dict:
                 f"{label}_logloss": round(_logloss(probs, actual), 6),
                 f"{label}_brier": round(_brier(probs, actual), 6),
             })
-        lines.append(json.dumps(entry, default=str))
+        if lines and row.get("match_number") in lines["picks"]:
+            fav, lean = lines["picks"][row["match_number"]]
+            entry.update({"favourite_line_pick": fav,
+                          "favourite_line_correct": fav == actual,
+                          "lean_line_pick": lean,
+                          "lean_line_correct": lean == actual,
+                          "lean_line_strength": lines["strength"]})
+        out_lines.append(json.dumps(entry, default=str))
         written += 1
 
-    if lines:
+    if out_lines:
         PRODUCTION_LOG.parent.mkdir(parents=True, exist_ok=True)
         with PRODUCTION_LOG.open("a", encoding="utf-8") as f:
-            f.write("\n".join(lines) + "\n")
+            f.write("\n".join(out_lines) + "\n")
         log.info("production log: +%d rows (%s)", written, PRODUCTION_LOG)
     return {"written": written, "skipped": skipped, "total": len(seen)}
 
