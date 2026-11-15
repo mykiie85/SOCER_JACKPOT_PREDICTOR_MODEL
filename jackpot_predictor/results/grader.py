@@ -2,20 +2,23 @@
 
 Results source
 --------------
-SportPesa's own jackpot feed (the one the scraper already uses for fixtures)
-carries a per-event ``score`` that is filled in once a match finishes, plus a
-``publicDraw`` field that holds a declared 1X2 outcome for matches SportPesa
-settled without a score (postponed / void). We reuse that feed — the archived
-predictions and the live events join on the stable ``event_id``
-(``sr:match:...``), so no fuzzy name matching is needed.
+SportPesa's jackpot history API (``jackpot-betslip-api .../jackpots/history/
+<jackpot_id>/details``, the one ``scraper/archive.py`` syncs) is the only
+source that says a result is final: the round carries ``jackpotStatus:
+"Finished"`` once SportPesa has settled it (2-3 h after the last kickoff in
+practice) and every event its settled ``resultPick``. A round is graded only
+then; until it is, nothing is graded and the next run tries again.
 
-Timing caveat
--------------
-``/jackpots/active`` only serves the *currently* active jackpot. Results are
-therefore fetchable in the window between the last kickoff and the next jackpot
-going live. To survive that window we snapshot the raw results payload to
-``data/jackpots/<type>_<human>_results.json`` the first time we see them, and
-fall back to that snapshot if the active jackpot has already rolled over.
+The live feed (``/jackpots/active``) is NOT a results source. Its per-event
+``score`` fills in while a match is being played and it has no finished flag,
+so grading from it marked matches on in-play scores: #240 match 11 was logged
+as a draw at 90 minutes and finished 2:4. It is still snapshotted to
+``data/jackpots/<type>_<human>_results.json`` for the record.
+
+Matches SportPesa settles without a score (postponed / void) come back as
+``score: "PD:<1|X|2>"`` with the drawn ``resultPick``; they stay ``void``,
+outside the correct/played count, exactly as the live feed's ``publicDraw``
+was treated.
 """
 from __future__ import annotations
 
@@ -82,39 +85,103 @@ def results_by_event(payload: dict) -> dict:
     return out
 
 
-def load_results(archive: dict, use_live: bool = True) -> tuple[dict, str]:
-    """Return (results_by_event, source). source is live/snapshot/none.
-
-    Prefers a fresh fetch of the active jackpot when it is still the one we
-    predicted (snapshotting it for durability); otherwise falls back to a
-    previously saved snapshot.
-    """
+def snapshot_live(archive: dict) -> None:
+    """Save the live feed for the record while it still serves this jackpot.
+    Never graded from: its scores include matches still in play."""
     jackpot = archive["jackpot"]
-    snap = _snapshot_path(jackpot)
+    try:
+        payload = _http_get(f"{JACKPOT_API_BASE}/jackpots/active")
+    except Exception as e:  # noqa: BLE001 - a snapshot is best-effort
+        log.warning("live feed fetch failed: %s", e)
+        return
+    if payload is not None and payload.get("id") == jackpot.get("jackpot_id"):
+        try:
+            _snapshot_path(jackpot).write_text(json.dumps(payload, default=str),
+                                               encoding="utf-8")
+        except OSError as e:
+            log.warning("could not save live snapshot: %s", e)
+
+
+def _official_path(jackpot: dict) -> Path:
+    return JACKPOTS_DIR / (f"{jackpot['jackpot_type']}_{jackpot['human_id']}"
+                           "_official_results.json")
+
+
+def official_results(details: dict, predictions: list[dict]) -> dict:
+    """event_id -> {outcome, score, status} from a history-API details payload.
+
+    Only a round SportPesa marks Finished yields results; anything else is {}.
+    History events are numbered like the slate, so they join to the archived
+    predictions on match number."""
+    if (details or {}).get("jackpotStatus") != "Finished":
+        return {}
+    by_number = {p.get("match_number"): p for p in predictions}
+    out = {}
+    for ev in details.get("events", []):
+        p = by_number.get(ev.get("eventNumber"))
+        if p is None:
+            continue
+        if ev.get("kickoffTime") and p.get("kickoff_utc") and \
+                ev["kickoffTime"][:16] != str(p["kickoff_utc"])[:16]:
+            log.warning("match %s: history kickoff %s vs slate %s",
+                        ev.get("eventNumber"), ev["kickoffTime"], p["kickoff_utc"])
+        outcome = _OUTCOME_FROM_PUBLIC.get(ev.get("resultPick"))
+        score = str(ev.get("score") or "")
+        if outcome is None:
+            r = {"outcome": None, "score": None, "status": "pending"}
+        elif score.startswith("PD:"):
+            r = {"outcome": outcome, "score": None, "status": "void"}
+        else:
+            try:
+                h, a = (int(x) for x in score.split(":"))
+            except ValueError:
+                h = a = None
+            if h is not None and ("H" if h > a else "D" if h == a else "A") \
+                    != outcome:
+                log.warning("match %s: score %s disagrees with resultPick %s — "
+                            "using resultPick", ev.get("eventNumber"), score,
+                            ev.get("resultPick"))
+            r = {"outcome": outcome,
+                 "score": (h, a) if h is not None else None, "status": "played"}
+        out[p.get("event_id")] = r
+    return out
+
+
+def load_results(archive: dict, use_live: bool = True) -> tuple[dict, str]:
+    """Return (results_by_event, source); source is "official" or "none".
+
+    Results exist only once SportPesa's history marks the round Finished. The
+    details are saved beside the archive so a later re-grade needs no network.
+    ``use_live`` also refreshes the live-feed snapshot (record only)."""
+    jackpot = archive["jackpot"]
     if use_live:
+        snapshot_live(archive)
+    from jackpot_predictor.scraper.archive import fetch_details
+    path = _official_path(jackpot)
+    details = None
+    try:
+        details = fetch_details(jackpot["jackpot_id"])
+    except Exception as e:  # noqa: BLE001 - retry on the next run
+        log.warning("history fetch failed: %s", e)
+    if details is None and path.exists():
         try:
-            payload = _http_get(f"{JACKPOT_API_BASE}/jackpots/active")
-        except Exception as e:  # noqa: BLE001 - never let a fetch error crash grading
-            log.warning("live results fetch failed: %s", e)
-            payload = None
-        if payload is not None:
-            if payload.get("id") == jackpot.get("jackpot_id"):
-                try:
-                    snap.write_text(json.dumps(payload, default=str),
-                                    encoding="utf-8")
-                except OSError as e:
-                    log.warning("could not save results snapshot: %s", e)
-                return results_by_event(payload), "live"
-            log.warning("active jackpot is #%s, but we predicted #%s — the feed "
-                        "has rolled over; using snapshot if present",
-                        payload.get("humanId"), jackpot.get("human_id"))
-    if snap.exists():
-        try:
-            payload = json.loads(snap.read_text(encoding="utf-8"))
-            return results_by_event(payload), "snapshot"
+            details = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, ValueError) as e:
-            log.warning("results snapshot unreadable: %s", e)
-    return {}, "none"
+            log.warning("saved official results unreadable: %s", e)
+    if details and details.get("jackpotId") not in (None, jackpot.get("jackpot_id")):
+        log.warning("history details are for jackpot %s, not %s — ignoring",
+                    details.get("jackpotId"), jackpot.get("jackpot_id"))
+        details = None
+    if not details or details.get("jackpotStatus") != "Finished":
+        log.info("jackpot #%s not marked Finished yet (status %s) — not grading",
+                 jackpot.get("human_id"), (details or {}).get("jackpotStatus"))
+        return {}, "none"
+    try:
+        path.write_text(json.dumps(details, default=str), encoding="utf-8")
+    except OSError as e:
+        log.warning("could not save official results: %s", e)
+    results = official_results(details, archive["predictions"])
+    return results, ("official" if results else "none")
 
 
 # ───────────────────────────────────────────────────────────────── grading

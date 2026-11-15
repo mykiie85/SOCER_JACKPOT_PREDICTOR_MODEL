@@ -109,14 +109,22 @@ python results_main.py --dry-run   # grade + print, send nothing
 python results_main.py --force     # re-send even if already reported
 ```
 
-Results come from the same jackpot feed the scraper uses — the live events
-carry a per-match `score` once finished, joined to the archive on the stable
-`event_id`. Because `/jackpots/active` only serves the *current* jackpot, the
-raw results are snapshotted to `data/jackpots/<type>_<human>_results.json` so a
-late grade still works after the feed rolls over. Matches SportPesa settles
-without a score (postponed/void, exposed via `publicDraw`) sit outside the
-correct/played count. A `deploy/jackpot-results.timer` fires at 08:00 and 20:30
-EAT; the run is idempotent via `data/cache/results_sent.json`.
+Results come from SportPesa's jackpot history API
+(`jackpot-betslip-api …/jackpots/history/<id>/details`), and a round is graded
+only once SportPesa marks it `Finished` (2–3 h after the last kickoff), using
+its settled `resultPick` per match. Until then nothing is graded and the next
+run retries. The live feed is **not** used for grading: its scores fill in
+during play and it has no finished flag (#240 match 11 was once logged as a
+draw at 90 minutes; it finished 2:4). It is still snapshotted to
+`data/jackpots/<type>_<human>_results.json`, and the official details are saved
+as `<type>_<human>_official_results.json`. Postponed matches SportPesa settles
+by public draw (`score: "PD:…"`) sit outside the correct/played count. A
+`deploy/jackpot-results.timer` fires at 08:00 and 20:30 EAT; the run is
+idempotent via `data/cache/results_sent.json`.
+
+`scripts/regrade_production_log.py <first> <last> [--drop N] [--dry-run]`
+rebuilds the production-log rows of finished rounds from their saved results
+and lists every grade that changes.
 
 ## Lean-against-the-crowd line (logging only)
 
