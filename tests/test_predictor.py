@@ -264,3 +264,24 @@ def test_doubles_coupon_covers_the_least_sure_picks():
     # One unpriced fixture means no coupon rather than a partial one.
     preds[3] = {"match_number": 4, "primary_pick": None}
     assert F._doubles_block({"number_of_events": 17}, preds) == []
+
+
+def test_format_html_escapes_feed_text():
+    from jackpot_predictor.predictor import formatter as F
+    preds = [{"match_number": n, "home_team_raw": f"Home {n}",
+              "away_team_raw": f"Away {n}", "tournament": "League",
+              "country": "Land", "kickoff_utc": None, "source": "odds",
+              "primary_pick": "H", "primary_prob": 0.40 + n / 100,
+              "secondary_pick": "D", "secondary_prob": 0.30,
+              "prob_home": 0.40 + n / 100, "prob_draw": 0.30,
+              "prob_away": 0.30 - n / 100, "margin": 0.10 + n / 100,
+              "confidence_tier": "MEDIUM",
+              "odds_home": 2.0, "odds_draw": 3.2, "odds_away": 4.0}
+             for n in range(1, 18)]
+    preds[16]["home_team_raw"] = "<script>x</script>"
+    jackpot = {"jackpot_type": "supa17", "number_of_events": 17,
+               "human_id": 999, "first_kickoff_utc": None}
+    html = F.format_html(jackpot, preds)
+    assert "&lt;script&gt;" in html
+    assert "<script>" not in html
+    assert "<b>&lt;script&gt;x&lt;/script&gt;</b>" in html  # own tags kept

@@ -7,6 +7,7 @@ import logging
 import math
 from collections import Counter
 from datetime import datetime, timezone
+from html import escape
 from zoneinfo import ZoneInfo
 
 from jackpot_predictor.config.settings import JACKPOTS_DIR, jackpot_config
@@ -183,15 +184,15 @@ def _lines_table_html(lines: dict | None) -> str:
     trs = "".join(
         f"<tr{hl if d else ''}>"
         f"<td style='text-align:center'>{m}</td>"
-        f"<td style='text-align:center'><b>{f}</b></td>"
-        f"<td style='text-align:center'><b>{l}</b>{' *' if d else ''}</td></tr>"
+        f"<td style='text-align:center'><b>{escape(f)}</b></td>"
+        f"<td style='text-align:center'><b>{escape(l)}</b>{' *' if d else ''}</td></tr>"
         for m, f, l, d in rows)
     return ("<h3>📋 Favourite line vs Lean line</h3>"
             "<table border='1' cellpadding='4' cellspacing='0' "
             "style='border-collapse:collapse;border-color:#d0d7de'>"
             "<tr style='background:#f6f8fa'><th>Match</th><th>Favourite line</th>"
             f"<th>Lean line</th></tr>{trs}</table>"
-            f"<p><small>{_lines_footer(rows)}</small></p>")
+            f"<p><small>{escape(_lines_footer(rows))}</small></p>")
 
 
 _DOUBLE_DISPLAY = {frozenset("HD"): "1X", frozenset("HA"): "12",
@@ -360,26 +361,28 @@ def format_html(jackpot: dict, predictions: list[dict],
         else:
             pick, probs, alt, tier = "—", "—", "—", "UNPRICED"
         color = _TIER_COLOR.get(tier, "#6e7781")
-        insight = "<br>".join(l.strip() for l in _insight_lines(p)) or "—"
+        insight = "<br>".join(escape(l.strip()) for l in _insight_lines(p)) or "—"
         row_style = " style='background:#fff8c5'" if is_top else ""
         rows.append(
             f"<tr{row_style}>"
             f"<td style='text-align:center'>{'⭐ ' if is_top else ''}"
             f"{rank or '—'}</td><td>{p['match_number']}</td>"
-            f"<td><b>{p['home_team_raw']}</b> vs <b>{p['away_team_raw']}</b><br>"
-            f"<small>{p['tournament']} ({p['country']}) — {_eat(p['kickoff_utc'])}"
+            f"<td><b>{escape(str(p['home_team_raw']))}</b> vs "
+            f"<b>{escape(str(p['away_team_raw']))}</b><br>"
+            f"<small>{escape(str(p['tournament']))} ({escape(str(p['country']))})"
+            f" — {_eat(p['kickoff_utc'])}"
             f"</small></td>"
             f"<td style='text-align:center;font-size:1.2em'><b>{pick}</b></td>"
             f"<td style='text-align:center'>{probs}</td>"
             f"<td style='text-align:center'>{alt}</td>"
             f"<td style='color:{color};font-weight:bold'>{tier}</td>"
-            f"<td><small>{_source_label(p)}</small></td>"
+            f"<td><small>{escape(str(_source_label(p)))}</small></td>"
             f"<td><small>{insight}</small></td></tr>")
 
     return f"""<html><body style="font-family:Segoe UI,Arial,sans-serif;color:#1f2328">
 <h2>🎯 SportPesa {_title(jackpot)} — Predictions</h2>
 {("<p><b>" + _stage_line(stage, jackpot) + "</b></p>") if stage else ""}
-<p>Jackpot #{jackpot['human_id']} &nbsp;|&nbsp; first kickoff:
+<p>Jackpot #{escape(str(jackpot['human_id']))} &nbsp;|&nbsp; first kickoff:
 {_eat(jackpot['first_kickoff_utc'])} &nbsp;|&nbsp; generated
 {_eat(datetime.now(timezone.utc).isoformat())}</p>
 <p>Sorted by confidence, strongest first{f"; ⭐ highlighted rows are the top {TOP_N}" if mark_top else ""}.</p>
@@ -390,9 +393,9 @@ def format_html(jackpot: dict, predictions: list[dict],
 <th>Confidence</th><th>Source</th><th>Insight</th></tr>
 {''.join(rows)}
 </table>
-{("<p><b>" + "<br>".join(l.strip() for l in top_block) + "</b></p>") if top_block else ""}{lean_table}
+{("<p><b>" + "<br>".join(escape(l.strip()) for l in top_block) + "</b></p>") if top_block else ""}{lean_table}
 {coupon13_html(_coupon13(jackpot, predictions))}
-{("<p><b>" + "<br>".join(l.strip() for l in doubles_block) + "</b></p>") if doubles_block else ""}
+{("<p><b>" + "<br>".join(escape(l.strip()) for l in doubles_block) + "</b></p>") if doubles_block else ""}
 <p><b>Summary:</b> 🟢 {tiers.get('HIGH', 0)} high · 🟡 {tiers.get('MEDIUM', 0)} medium ·
 🟠 {tiers.get('LOW', 0)} low · 🔴 {tiers.get('UNCERTAIN', 0)} uncertain —
 picks 1×{picks.get('H', 0)}, X×{picks.get('D', 0)}, 2×{picks.get('A', 0)}</p>
